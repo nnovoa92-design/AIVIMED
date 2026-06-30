@@ -5,6 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fichas de sesión · AIVIMED</title>
   <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .avance-box { background: var(--color-primary-light); border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1rem; }
+    .avance-box .titulo { font-weight: 600; color: var(--color-primary-dark); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem; }
+    .barra { height: 12px; background: #fff; border-radius: 999px; overflow: hidden; margin: .6rem 0; border: 1px solid var(--color-border); }
+    .barra > div { height: 100%; background: linear-gradient(90deg, var(--color-primary), var(--color-accent)); transition: width .3s; }
+    .avance-stats { display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: .82rem; color: var(--color-text-muted); }
+    .avance-stats strong { color: var(--color-text); }
+
+    .fotos-grid { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .5rem; }
+    .foto-thumb { position: relative; width: 92px; height: 92px; border-radius: 8px; overflow: hidden; border: 1px solid var(--color-border); }
+    .foto-thumb img { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+    .foto-thumb .quitar { position: absolute; top: 2px; right: 2px; background: rgba(192,82,74,.9); color: #fff; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; line-height: 1; padding: 0; }
+    .foto-thumb.nueva::after { content: 'nueva'; position: absolute; bottom: 0; left: 0; right: 0; background: rgba(67,153,116,.85); color: #fff; font-size: .62rem; text-align: center; }
+    .hist-fotos { display: flex; gap: .25rem; }
+    .hist-fotos img { width: 34px; height: 34px; object-fit: cover; border-radius: 4px; cursor: pointer; border: 1px solid var(--color-border); }
+
+    .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 600; align-items: center; justify-content: center; padding: 1rem; }
+    .lightbox.open { display: flex; }
+    .lightbox img { max-width: 95%; max-height: 95%; border-radius: 8px; }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -39,11 +59,43 @@
                 <input type="datetime-local" id="fecha" required />
               </div>
             </div>
+
+            <!-- Pack / Tratamiento -->
+            <div class="form-row">
+              <div class="form-group">
+                <label>Tratamiento / Pack</label>
+                <select id="tratamiento_id">
+                  <option value="">— Sesión única —</option>
+                  <option value="__nuevo__">➕ Crear pack nuevo…</option>
+                </select>
+              </div>
+              <div class="form-group" id="grp-total" style="display:none;">
+                <label>Total de sesiones del pack</label>
+                <input type="number" id="total_sesiones" min="2" value="3" />
+              </div>
+              <div class="form-group" id="grp-numero" style="display:none;">
+                <label>N° de sesión</label>
+                <input type="number" id="numero_sesion" min="1" />
+              </div>
+            </div>
+
+            <!-- Cuadro de avance -->
+            <div class="avance-box" id="avance-box" style="display:none;"></div>
+
             <div class="form-group"><label>Detalle del procedimiento (zona, dosis, lote, técnica…)</label><textarea id="detalle" rows="3"></textarea></div>
             <div class="form-group"><label>Observaciones post-sesión</label><textarea id="observaciones" rows="2"></textarea></div>
+
+            <!-- Fotos -->
+            <div class="form-group">
+              <label>Fotos de la sesión (antes/después, evolución)</label>
+              <input type="file" id="fotos-input" accept="image/*" multiple style="padding:.4rem;" />
+              <div class="fotos-grid" id="fotos-grid"></div>
+            </div>
+
             <button type="submit" id="submit-btn">Guardar sesión</button>
             <button type="button" id="cancel-btn" class="btn-secondary" style="display:none;">Cancelar</button>
             <p class="error-message" id="form-error"></p>
+            <p id="upload-status" style="font-size:.82rem;color:var(--color-text-muted);"></p>
           </form>
         </div>
 
@@ -56,9 +108,9 @@
           </div>
           <table>
             <thead>
-              <tr><th>Fecha</th><th>Paciente</th><th>Servicio</th><th>Profesionales</th><th>Detalle</th><th>Acciones</th></tr>
+              <tr><th>Fecha</th><th>Paciente</th><th>Servicio</th><th>Pack</th><th>Profesionales</th><th>Fotos</th><th>Acciones</th></tr>
             </thead>
-            <tbody id="sesiones-body"><tr><td colspan="6">Cargando...</td></tr></tbody>
+            <tbody id="sesiones-body"><tr><td colspan="7">Cargando...</td></tr></tbody>
           </table>
         </div>
 
@@ -66,25 +118,157 @@
     </div>
   </div>
 
+  <div class="lightbox" id="lightbox"><img id="lightbox-img" src="" alt="" /></div>
+
   <script src="../assets/vendor/supabase.min.js"></script>
   <script src="../assets/js/supabaseClient.js"></script>
   <script src="../assets/js/layout.js"></script>
   <script>
     let sesionesCache = [];
+    let tratamientosPaciente = [];   // packs activos del paciente seleccionado
+    let fotosActuales = [];          // URLs ya guardadas (al editar)
+    let archivosNuevos = [];         // File[] a subir
 
+    // ── Lightbox ──
+    const lightbox = document.getElementById('lightbox');
+    function verFoto(url){ document.getElementById('lightbox-img').src = url; lightbox.classList.add('open'); }
+    lightbox.addEventListener('click', () => lightbox.classList.remove('open'));
+
+    // ── Fotos en el formulario ──
+    function renderFotosForm() {
+      const grid = document.getElementById('fotos-grid');
+      const existentes = fotosActuales.map((url, i) =>
+        `<div class="foto-thumb"><img src="${url}" data-url="${url}" class="ver-foto"/><button type="button" class="quitar" data-tipo="existente" data-idx="${i}">×</button></div>`);
+      const nuevas = archivosNuevos.map((f, i) =>
+        `<div class="foto-thumb nueva"><img src="${URL.createObjectURL(f)}" class="ver-foto" data-url="${URL.createObjectURL(f)}"/><button type="button" class="quitar" data-tipo="nueva" data-idx="${i}">×</button></div>`);
+      grid.innerHTML = existentes.concat(nuevas).join('');
+      grid.querySelectorAll('.ver-foto').forEach(img => img.addEventListener('click', () => verFoto(img.dataset.url)));
+      grid.querySelectorAll('.quitar').forEach(b => b.addEventListener('click', () => {
+        const idx = Number(b.dataset.idx);
+        if (b.dataset.tipo === 'existente') fotosActuales.splice(idx, 1);
+        else archivosNuevos.splice(idx, 1);
+        renderFotosForm();
+      }));
+    }
+
+    document.getElementById('fotos-input').addEventListener('change', (e) => {
+      archivosNuevos = archivosNuevos.concat(Array.from(e.target.files || []));
+      e.target.value = '';
+      renderFotosForm();
+    });
+
+    async function subirFotos(sesionId) {
+      const urls = [];
+      for (const file of archivosNuevos) {
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        const rand = (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
+        const path = `${sesionId}/${rand}.${ext}`;
+        const { error } = await supabaseClient.storage.from('sesiones').upload(path, file, { upsert: false });
+        if (!error) {
+          const { data } = supabaseClient.storage.from('sesiones').getPublicUrl(path);
+          urls.push(data.publicUrl);
+        }
+      }
+      return urls;
+    }
+
+    // ── Tratamiento / Pack ──
+    const selTrat = document.getElementById('tratamiento_id');
+
+    function toggleCamposPack() {
+      const v = selTrat.value;
+      document.getElementById('grp-total').style.display = (v === '__nuevo__') ? 'block' : 'none';
+      document.getElementById('grp-numero').style.display = (v && v !== '') ? 'block' : 'none';
+      actualizarAvance();
+    }
+
+    async function cargarTratamientosPaciente(pacId) {
+      // preserva opciones fijas, recarga las del paciente
+      selTrat.innerHTML = '<option value="">— Sesión única —</option><option value="__nuevo__">➕ Crear pack nuevo…</option>';
+      tratamientosPaciente = [];
+      if (!pacId) return;
+      const { data } = await supabaseClient
+        .from('tratamientos')
+        .select('id, total_sesiones, servicios(nombre)')
+        .eq('paciente_id', pacId).eq('activo', true)
+        .order('creado_en', { ascending: false });
+      tratamientosPaciente = data || [];
+      tratamientosPaciente.forEach(t => {
+        const nom = t.servicios?.nombre || 'Pack';
+        selTrat.add(new Option(`${nom} (${t.total_sesiones} sesiones)`, t.id));
+      });
+    }
+
+    async function actualizarAvance() {
+      const box = document.getElementById('avance-box');
+      const v = selTrat.value;
+      const numInput = document.getElementById('numero_sesion');
+
+      if (v === '__nuevo__') {
+        const total = Number(document.getElementById('total_sesiones').value) || 0;
+        numInput.value = numInput.value || 1;
+        box.style.display = 'block';
+        box.innerHTML = `<div class="titulo"><span>Nuevo pack</span><span>${total} sesiones</span></div>
+          <div class="avance-stats"><span>Esta será la <strong>sesión 1</strong> de ${total}.</span></div>`;
+        return;
+      }
+      if (!v) { box.style.display = 'none'; return; }
+
+      const trat = tratamientosPaciente.find(t => t.id === v);
+      if (!trat) { box.style.display = 'none'; return; }
+
+      // sesiones ya registradas en este pack
+      const { data: sesPack } = await supabaseClient
+        .from('sesiones').select('id, numero_sesion, fecha')
+        .eq('tratamiento_id', v).order('numero_sesion', { ascending: true });
+      const realizadas = (sesPack || []).length;
+      const editandoId = document.getElementById('sesion-id').value;
+      const editandoEnPack = (sesPack || []).some(s => s.id === editandoId);
+      const total = trat.total_sesiones;
+
+      // si es sesión nueva en el pack, sugerir siguiente número
+      if (!editandoEnPack) numInput.value = Math.min(realizadas + 1, total);
+
+      const hechas = editandoEnPack ? realizadas : realizadas; // realizadas guardadas
+      const pct = Math.min(100, Math.round((hechas / total) * 100));
+      const proxima = hechas < total ? (hechas + 1) : null;
+
+      box.style.display = 'block';
+      box.innerHTML = `
+        <div class="titulo"><span>${trat.servicios?.nombre || 'Pack'}</span><span>${hechas} de ${total} sesiones</span></div>
+        <div class="barra"><div style="width:${pct}%;"></div></div>
+        <div class="avance-stats">
+          <span>Realizadas: <strong>${hechas}</strong></span>
+          <span>Restantes: <strong>${Math.max(0, total - hechas)}</strong></span>
+          <span>Próxima sesión: <strong>${proxima ? 'N° ' + proxima : 'Pack completo ✓'}</strong></span>
+        </div>`;
+    }
+
+    selTrat.addEventListener('change', toggleCamposPack);
+    document.getElementById('total_sesiones').addEventListener('input', actualizarAvance);
+
+    // ── Form ──
     const clearForm = () => {
-      ['sesion-id','paciente_id','servicio_id','personal_id','personal_apoyo_id','detalle','observaciones'].forEach(f => {
+      ['sesion-id','servicio_id','personal_id','personal_apoyo_id','detalle','observaciones','numero_sesion'].forEach(f => {
         const el = document.getElementById(f); if (el) el.value = '';
       });
+      document.getElementById('paciente_id').value = '';
+      selTrat.value = '';
+      document.getElementById('total_sesiones').value = '3';
+      fotosActuales = []; archivosNuevos = [];
+      renderFotosForm();
+      toggleCamposPack();
+      cargarTratamientosPaciente('');
       const now = new Date(); now.setSeconds(0,0);
       document.getElementById('fecha').value = now.toISOString().slice(0,16);
       document.getElementById('form-title').textContent = 'Nueva sesión';
       document.getElementById('submit-btn').textContent = 'Guardar sesión';
       document.getElementById('cancel-btn').style.display = 'none';
       document.getElementById('form-error').textContent = '';
+      document.getElementById('upload-status').textContent = '';
     };
 
-    const fillForm = (s) => {
+    const fillForm = async (s) => {
       document.getElementById('sesion-id').value = s.id;
       document.getElementById('paciente_id').value = s.paciente_id ?? '';
       document.getElementById('servicio_id').value = s.servicio_id ?? '';
@@ -93,6 +277,15 @@
       document.getElementById('fecha').value = s.fecha ? s.fecha.slice(0,16) : '';
       document.getElementById('detalle').value = s.detalle ?? '';
       document.getElementById('observaciones').value = s.observaciones ?? '';
+      document.getElementById('numero_sesion').value = s.numero_sesion ?? '';
+      fotosActuales = Array.isArray(s.fotos) ? [...s.fotos] : [];
+      archivosNuevos = [];
+      renderFotosForm();
+
+      await cargarTratamientosPaciente(s.paciente_id);
+      selTrat.value = s.tratamiento_id || '';
+      toggleCamposPack();
+
       document.getElementById('form-title').textContent = 'Editar sesión';
       document.getElementById('submit-btn').textContent = 'Actualizar';
       document.getElementById('cancel-btn').style.display = 'inline-block';
@@ -101,18 +294,28 @@
 
     const renderSesiones = (list) => {
       const tbody = document.getElementById('sesiones-body');
-      if (!list.length) { tbody.innerHTML = '<tr><td colspan="6">Sin sesiones registradas.</td></tr>'; return; }
-      tbody.innerHTML = list.map(s => `<tr>
-        <td>${fmtFechaHora(s.fecha)}</td>
-        <td>${s.pacientes ? `${s.pacientes.nombre} ${s.pacientes.apellido}` : '–'}</td>
-        <td>${s.servicios?.nombre ?? '–'}</td>
-        <td>${s.lider ? `${s.lider.nombre} ${s.lider.apellido}` : '–'}${s.apoyo ? `<br><span style="font-size:0.8em;color:var(--color-text-muted);">+ ${s.apoyo.nombre} ${s.apoyo.apellido} (apoyo)</span>` : ''}</td>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${s.detalle ?? ''}">${s.detalle ?? '–'}</td>
-        <td>
-          <button class="btn-secondary btn-sm edit-btn" data-id="${s.id}">Editar</button>
-          <button class="btn-danger btn-sm del-btn" data-id="${s.id}">Eliminar</button>
-        </td>
-      </tr>`).join('');
+      if (!list.length) { tbody.innerHTML = '<tr><td colspan="7">Sin sesiones registradas.</td></tr>'; return; }
+      tbody.innerHTML = list.map(s => {
+        const fotos = Array.isArray(s.fotos) ? s.fotos : [];
+        const packBadge = s.tratamiento_id
+          ? `<span class="badge badge-teal">N° ${s.numero_sesion ?? '?'}${s.tratamientos ? ' / ' + s.tratamientos.total_sesiones : ''}</span>` : '–';
+        const fotosHtml = fotos.length
+          ? `<div class="hist-fotos">${fotos.slice(0,3).map(u => `<img src="${u}" class="ver-foto-hist" data-url="${u}"/>`).join('')}${fotos.length>3?`<span style="font-size:.72rem;color:var(--color-text-muted);align-self:center;">+${fotos.length-3}</span>`:''}</div>`
+          : '–';
+        return `<tr>
+          <td>${fmtFechaHora(s.fecha)}</td>
+          <td>${s.pacientes ? `${s.pacientes.nombre} ${s.pacientes.apellido}` : '–'}</td>
+          <td>${s.servicios?.nombre ?? '–'}</td>
+          <td>${packBadge}</td>
+          <td>${s.lider ? `${s.lider.nombre} ${s.lider.apellido}` : '–'}${s.apoyo ? `<br><span style="font-size:0.8em;color:var(--color-text-muted);">+ ${s.apoyo.nombre} ${s.apoyo.apellido}</span>` : ''}</td>
+          <td>${fotosHtml}</td>
+          <td style="white-space:nowrap;">
+            <button class="btn-secondary btn-sm edit-btn" data-id="${s.id}">Editar</button>
+            <button class="btn-danger btn-sm del-btn" data-id="${s.id}">Eliminar</button>
+          </td>
+        </tr>`;
+      }).join('');
+      tbody.querySelectorAll('.ver-foto-hist').forEach(img => img.addEventListener('click', () => verFoto(img.dataset.url)));
       tbody.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => fillForm(sesionesCache.find(x => x.id === b.dataset.id))));
       tbody.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', async () => {
         if (!confirm('¿Eliminar esta sesión?')) return;
@@ -125,7 +328,7 @@
       const pacId = document.getElementById('filter-paciente').value;
       let q = supabaseClient
         .from('sesiones')
-        .select('*, pacientes(nombre,apellido), servicios(nombre), lider:personal!personal_id(nombre,apellido), apoyo:personal!personal_apoyo_id(nombre,apellido)')
+        .select('*, pacientes(nombre,apellido), servicios(nombre), tratamientos(total_sesiones), lider:personal!personal_id(nombre,apellido), apoyo:personal!personal_apoyo_id(nombre,apellido)')
         .order('fecha', { ascending: false })
         .limit(100);
       if (pacId) q = q.eq('paciente_id', pacId);
@@ -136,24 +339,70 @@
 
     document.getElementById('filter-paciente').addEventListener('change', load);
     document.getElementById('cancel-btn').addEventListener('click', clearForm);
+    document.getElementById('paciente_id').addEventListener('change', async (e) => {
+      await cargarTratamientosPaciente(e.target.value);
+      toggleCamposPack();
+    });
 
     document.getElementById('sesion-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const errEl = document.getElementById('form-error');
+      const statusEl = document.getElementById('upload-status');
+      errEl.textContent = '';
       const id = document.getElementById('sesion-id').value;
+      const pacienteId = document.getElementById('paciente_id').value || null;
+
+      // 1) Resolver tratamiento (crear pack si corresponde)
+      let tratamientoId = selTrat.value;
+      if (tratamientoId === '__nuevo__') {
+        const total = Number(document.getElementById('total_sesiones').value) || 2;
+        const { data: nuevoT, error: errT } = await supabaseClient.from('tratamientos').insert({
+          paciente_id: pacienteId,
+          servicio_id: document.getElementById('servicio_id').value || null,
+          total_sesiones: total,
+        }).select('id').single();
+        if (errT) { errEl.textContent = errT.message; return; }
+        tratamientoId = nuevoT.id;
+      } else if (tratamientoId === '') {
+        tratamientoId = null;
+      }
+
       const payload = {
-        paciente_id: document.getElementById('paciente_id').value || null,
+        paciente_id: pacienteId,
         servicio_id: document.getElementById('servicio_id').value || null,
         personal_id: document.getElementById('personal_id').value || null,
         personal_apoyo_id: document.getElementById('personal_apoyo_id').value || null,
         fecha: document.getElementById('fecha').value || null,
         detalle: document.getElementById('detalle').value || null,
         observaciones: document.getElementById('observaciones').value || null,
+        tratamiento_id: tratamientoId,
+        numero_sesion: document.getElementById('numero_sesion').value || null,
+        fotos: fotosActuales,
       };
-      const { error } = id
-        ? await supabaseClient.from('sesiones').update(payload).eq('id', id)
-        : await supabaseClient.from('sesiones').insert(payload);
-      if (error) { document.getElementById('form-error').textContent = error.message; return; }
-      clearForm(); await load();
+
+      // 2) Insertar / actualizar sesión
+      let sesionId = id;
+      if (id) {
+        const { error } = await supabaseClient.from('sesiones').update(payload).eq('id', id);
+        if (error) { errEl.textContent = error.message; return; }
+      } else {
+        const { data, error } = await supabaseClient.from('sesiones').insert(payload).select('id').single();
+        if (error) { errEl.textContent = error.message; return; }
+        sesionId = data.id;
+      }
+
+      // 3) Subir fotos nuevas y actualizar el campo fotos
+      if (archivosNuevos.length) {
+        statusEl.textContent = `Subiendo ${archivosNuevos.length} foto(s)…`;
+        const nuevasUrls = await subirFotos(sesionId);
+        const todas = fotosActuales.concat(nuevasUrls);
+        const { error: errF } = await supabaseClient.from('sesiones').update({ fotos: todas }).eq('id', sesionId);
+        if (errF) { errEl.textContent = 'Sesión guardada, pero error al guardar fotos: ' + errF.message; }
+        statusEl.textContent = '';
+      }
+
+      clearForm();
+      await load();
     });
 
     (async () => {
@@ -169,8 +418,7 @@
       const selPac = document.getElementById('paciente_id');
       const filterPac = document.getElementById('filter-paciente');
       (pacientes||[]).forEach(p => {
-        const opt = new Option(`${p.apellido}, ${p.nombre}`, p.id);
-        selPac.add(opt.cloneNode(true));
+        selPac.add(new Option(`${p.apellido}, ${p.nombre}`, p.id));
         filterPac.add(new Option(`${p.apellido}, ${p.nombre}`, p.id));
       });
 
