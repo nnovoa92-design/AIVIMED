@@ -177,7 +177,7 @@
       const errorEl = document.getElementById('mov-error');
       errorEl.textContent = '';
 
-      if (!insId || !cantidad) { errorEl.textContent = 'Seleccioná un insumo e ingresá la cantidad.'; return; }
+      if (!insId || !cantidad) { errorEl.textContent = 'Selecciona un insumo e ingresa la cantidad.'; return; }
 
       const insumo = cache.find(i => i.id === insId);
       const delta = tipo === 'entrada' ? cantidad : tipo === 'salida' ? -cantidad : cantidad - Number(insumo.stock_actual);

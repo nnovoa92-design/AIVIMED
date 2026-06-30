@@ -86,7 +86,7 @@
             <div class="form-group">
               <label>Texto del consentimiento</label>
               <div class="consent-preview" id="consent-preview">
-                <p style="color:var(--color-text-muted);margin:0;">Seleccioná un servicio para generar el texto del consentimiento.</p>
+                <p style="color:var(--color-text-muted);margin:0;">Selecciona un servicio para generar el texto del consentimiento.</p>
               </div>
             </div>
 
@@ -271,7 +271,7 @@
 
     function clearForm() {
       ['consent-id', 'paciente_id', 'servicio_id', 'nombre_firmante', 'rut_firmante'].forEach(f => { const el = document.getElementById(f); if (el) el.value = ''; });
-      document.getElementById('consent-preview').innerHTML = '<p style="color:var(--color-text-muted);margin:0;">Seleccioná un servicio para generar el texto del consentimiento.</p>';
+      document.getElementById('consent-preview').innerHTML = '<p style="color:var(--color-text-muted);margin:0;">Selecciona un servicio para generar el texto del consentimiento.</p>';
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       hasSignature = false;
       document.getElementById('firma-placeholder').style.display = 'block';
@@ -289,7 +289,7 @@
 
       const pacienteId = document.getElementById('paciente_id').value;
       const servicioId = document.getElementById('servicio_id').value;
-      if (!pacienteId || !servicioId) { errorEl.textContent = 'Seleccioná paciente y servicio.'; return; }
+      if (!pacienteId || !servicioId) { errorEl.textContent = 'Selecciona paciente y servicio.'; return; }
       if (!hasSignature) { errorEl.textContent = 'El paciente debe firmar antes de guardar.'; return; }
 
       const firmaData = canvas.toDataURL('image/png');

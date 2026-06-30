@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tu cotización — AIVIMED</title>
   <meta property="og:title" content="AIVIMED — Tu cotización" />
-  <meta property="og:description" content="Revisá tu cotización y respondé en un clic." />
+  <meta property="og:description" content="Revisa tu cotización y responde en un clic." />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=DM+Sans:wght@400;500;600;700&display=swap" />
   <style>
     :root{
@@ -72,7 +72,7 @@
     async function cargar() {
       if (!cotId) { cont.innerHTML = '<div class="muted">Enlace inválido.</div>'; return; }
       const { data, error } = await sb.rpc('obtener_cotizacion_publica', { p_cot_id: cotId });
-      if (error || !data) { cont.innerHTML = '<div class="muted">No se encontró la cotización. Verificá el enlace.</div>'; return; }
+      if (error || !data) { cont.innerHTML = '<div class="muted">No se encontró la cotización. Verifica el enlace.</div>'; return; }
       cot = data;
       render();
     }
@@ -115,7 +115,7 @@
                 <button class="b-obs" id="b-obs">Dejar observación</button>
               </div>
               <div id="obs-box" style="display:none;">
-                <textarea id="obs-text" rows="3" placeholder="Escribí tu consulta u observación…"></textarea>
+                <textarea id="obs-text" rows="3" placeholder="Escribe tu consulta u observación…"></textarea>
                 <button class="b-aceptar" id="b-enviar-obs" style="margin-top:.5rem;">Enviar observación</button>
               </div>
               <p class="error" id="err" style="color:var(--danger);font-size:.85rem;"></p>
@@ -130,7 +130,7 @@
         });
         document.getElementById('b-enviar-obs').addEventListener('click', () => {
           const obs = document.getElementById('obs-text').value.trim();
-          if (!obs) { document.getElementById('err').textContent = 'Escribí tu observación.'; return; }
+          if (!obs) { document.getElementById('err').textContent = 'Escribe tu observación.'; return; }
           responder('observar', obs);
         });
       }

@@ -234,7 +234,7 @@
     function renderItems() {
       const tbody = document.getElementById('items-body');
       if (!items.length) {
-        tbody.innerHTML = '<tr><td colspan="5" style="color:var(--color-text-muted);">Sin ítems. Agregá uno con el botón de abajo.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="color:var(--color-text-muted);">Sin ítems. Agrega uno con el botón de abajo.</td></tr>';
       } else {
         tbody.innerHTML = items.map((it, idx) => {
           const opts = serviciosCache.map(s => `<option value="${s.id}" ${s.id === it.servicio_id ? 'selected' : ''}>${s.nombre}</option>`).join('');
@@ -344,8 +344,8 @@
       errorEl.textContent = '';
 
       const pacienteId = document.getElementById('paciente_id').value;
-      if (!pacienteId) { errorEl.textContent = 'Seleccioná un paciente.'; return; }
-      if (!items.length) { errorEl.textContent = 'Agregá al menos un ítem.'; return; }
+      if (!pacienteId) { errorEl.textContent = 'Selecciona un paciente.'; return; }
+      if (!items.length) { errorEl.textContent = 'Agrega al menos un ítem.'; return; }
 
       const id = document.getElementById('cot-id').value;
       const payloadCot = {
@@ -441,7 +441,7 @@
     function mensajeCotizacion(c) {
       const nombre = c.pacientes ? c.pacientes.nombre : '';
       return `Hola ${nombre}! 👋\n\nTe compartimos tu cotización ${fmtNumero('COT', c.numero)} de AIVIMED por un total de ${fmt(c.total)}.\n\n`
-        + `Podés revisarla y responder (Aceptar, Rechazar o dejar una Observación) en este enlace:\n${linkRespuesta(c.id)}\n\n`
+        + `Puedes revisarla y responder (Aceptar, Rechazar o dejar una Observación) en este enlace:\n${linkRespuesta(c.id)}\n\n`
         + `¡Gracias por confiar en AIVIMED — Salud Integral! 🦋`;
     }
 
@@ -512,7 +512,7 @@
 
       // Abrir la ventana YA (dentro del gesto del usuario) para evitar bloqueo de popups
       const win = window.open('', '_blank');
-      if (!win) { alert('El navegador bloqueó la ventana de impresión. Permití las ventanas emergentes para este sitio.'); return; }
+      if (!win) { alert('El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes para este sitio.'); return; }
       win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Generando…</title></head><body style="font-family:sans-serif;padding:2rem;color:#2d7558;">Generando cotización…</body></html>');
 
       // Traer ítems y datos completos del paciente en paralelo
