@@ -337,14 +337,14 @@
       if (conReq.length) {
         const g1 = document.createElement('optgroup');
         g1.label = 'Requieren consentimiento';
-        conReq.forEach(sv => g1.add(new Option(sv.nombre, sv.id)));
-        selSrv.add(g1);
+        conReq.forEach(sv => g1.appendChild(new Option(sv.nombre, sv.id)));
+        selSrv.appendChild(g1);
       }
       if (sinReq.length) {
         const g2 = document.createElement('optgroup');
         g2.label = 'Otros servicios';
-        sinReq.forEach(sv => g2.add(new Option(sv.nombre, sv.id)));
-        selSrv.add(g2);
+        sinReq.forEach(sv => g2.appendChild(new Option(sv.nombre, sv.id)));
+        selSrv.appendChild(g2);
       }
 
       resizeCanvas();
