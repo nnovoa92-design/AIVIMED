@@ -30,16 +30,36 @@
       pointer-events: none;
     }
     .consent-preview {
-      background: var(--color-bg);
-      border: 1px solid var(--color-border);
+      background: #fff;
+      border: 1.5px solid var(--color-border);
       border-radius: var(--radius);
-      padding: 1.25rem;
+      padding: 1rem 1rem 1rem 3.1rem;
       font-size: 0.85rem;
       line-height: 1.6;
-      max-height: 300px;
+      max-height: 360px;
       overflow-y: auto;
+      counter-reset: renglon;
     }
+    .consent-preview:focus { outline: 2px solid var(--color-primary); outline-offset: 1px; }
     .consent-preview h3 { margin-top: 0; color: var(--color-primary-dark); }
+    /* Numeración de renglones en el margen (cada bloque del documento) */
+    .consent-preview > * { position: relative; }
+    .consent-preview > *::before {
+      counter-increment: renglon;
+      content: counter(renglon);
+      position: absolute;
+      left: -2.5rem;
+      width: 2rem;
+      text-align: right;
+      color: var(--color-text-muted);
+      font-size: 0.72rem;
+      user-select: none;
+      -webkit-user-select: none;
+      padding-top: 0.1rem;
+    }
+    .consent-toolbar { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+    .consent-toolbar button { font-size: 0.76rem; padding: 0.3rem 0.6rem; }
+    .editable-hint { font-size: 0.76rem; color: var(--color-text-muted); margin: 0.35rem 0 0; }
     .firma-img { max-width: 200px; border: 1px solid var(--color-border); border-radius: 4px; background: #fff; }
 
     .print-area { display: none; }
@@ -84,10 +104,16 @@
             </div>
 
             <div class="form-group">
-              <label>Texto del consentimiento</label>
-              <div class="consent-preview" id="consent-preview">
+              <label>Texto del consentimiento (editable)</label>
+              <div class="consent-toolbar">
+                <button type="button" class="btn-secondary" id="tb-negrita" title="Negrita"><b>N</b></button>
+                <button type="button" class="btn-secondary" id="tb-punto" title="Agregar un renglón nuevo">+ Renglón</button>
+                <button type="button" class="btn-secondary" id="tb-restaurar" title="Volver al texto generado">↺ Restaurar plantilla</button>
+              </div>
+              <div class="consent-preview" id="consent-preview" contenteditable="true" spellcheck="true">
                 <p style="color:var(--color-text-muted);margin:0;">Selecciona un servicio para generar el texto del consentimiento.</p>
               </div>
+              <p class="editable-hint">Puedes escribir directamente para agregar o quitar información. Cada renglón se numera en el margen. El formato (negrita, listas) se mantiene.</p>
             </div>
 
             <div class="form-group">
@@ -241,9 +267,46 @@
         }
       }
       if (srv) {
-        document.getElementById('consent-preview').innerHTML = generarTexto(srv, pac);
+        const prev = document.getElementById('consent-preview');
+        // Si el usuario ya editó el texto, no lo pisamos sin confirmar
+        if (textoEditado && prev.dataset.generado === '1') {
+          if (!confirm('Cambiaste el procedimiento o paciente. ¿Regenerar el texto del consentimiento? Se perderán tus ediciones.')) return;
+        }
+        prev.innerHTML = generarTexto(srv, pac);
+        prev.dataset.generado = '1';
+        textoEditado = false;
       }
     }
+
+    // Marcar cuando el usuario edita manualmente el texto
+    let textoEditado = false;
+    const preview = document.getElementById('consent-preview');
+    preview.addEventListener('input', () => { textoEditado = true; });
+
+    // ── Barra de herramientas del editor ──
+    document.getElementById('tb-negrita').addEventListener('click', () => {
+      preview.focus();
+      document.execCommand('bold');
+    });
+    document.getElementById('tb-punto').addEventListener('click', () => {
+      preview.focus();
+      // agrega un renglón nuevo al final, listo para escribir
+      const p = document.createElement('p');
+      p.innerHTML = '&nbsp;';
+      preview.appendChild(p);
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      textoEditado = true;
+    });
+    document.getElementById('tb-restaurar').addEventListener('click', () => {
+      if (!confirm('¿Restaurar el texto generado por la plantilla? Se perderán tus ediciones.')) return;
+      textoEditado = false;
+      preview.dataset.generado = '';
+      updatePreview();
+    });
 
     document.getElementById('servicio_id').addEventListener('change', updatePreview);
     document.getElementById('paciente_id').addEventListener('change', updatePreview);
@@ -313,6 +376,8 @@
     function clearForm() {
       ['consent-id', 'paciente_id', 'servicio_id', 'nombre_firmante', 'rut_firmante'].forEach(f => { const el = document.getElementById(f); if (el) el.value = ''; });
       document.getElementById('consent-preview').innerHTML = '<p style="color:var(--color-text-muted);margin:0;">Selecciona un servicio para generar el texto del consentimiento.</p>';
+      document.getElementById('consent-preview').dataset.generado = '';
+      textoEditado = false;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       hasSignature = false;
       document.getElementById('firma-placeholder').style.display = 'block';
