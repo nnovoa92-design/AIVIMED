@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Stock de insumos</h1></header>
+      <div class="content">
+
+        <!-- Form insumo -->
+        <div class="card">
+          <h2 id="form-title" style="margin-top:0;">Nuevo insumo</h2>
+          <form id="insumo-form">
+            <input type="hidden" id="insumo-id" />
+            <div class="form-row">
+              <div class="form-group"><label>Nombre *</label><input id="nombre" required /></div>
+              <div class="form-group"><label>Unidad</label><input id="unidad" placeholder="ml, unidades, ampollas…" /></div>
+              <div class="form-group"><label>Stock actual</label><input type="number" id="stock_actual" min="0" step="0.01" value="0" /></div>
+              <div class="form-group"><label>Stock mínimo</label><input type="number" id="stock_minimo" min="0" step="0.01" value="0" /></div>
+              <div class="form-group"><label>Precio unitario</label><input type="number" id="precio_unitario" min="0" step="0.01" /></div>
+            </div>
+            <button type="submit" id="submit-btn">Guardar insumo</button>
+            <button type="button" id="cancel-btn" class="btn-secondary" style="display:none;">Cancelar</button>
+            <p class="error-message" id="form-error"></p>
+          </form>
+        </div>
+
+        <!-- Movimiento rápido -->
+        <div class="card" style="margin-top:1rem;">
+          <h2 style="margin-top:0;">Registrar movimiento</h2>
+          <form id="mov-form" class="form-row" style="align-items:flex-end;">
+            <div class="form-group" style="flex:2;">
+              <label>Insumo</label>
+              <select id="mov-insumo"><option value="">Seleccionar…</option></select>
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>Tipo</label>
+              <select id="mov-tipo">
+                <option value="entrada">Entrada (+)</option>
+                <option value="salida">Salida (–)</option>
+                <option value="ajuste">Ajuste</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>Cantidad</label>
+              <input type="number" id="mov-cantidad" min="0" step="0.01" required />
+            </div>
+            <div class="form-group" style="flex:2;">
+              <label>Motivo</label>
+              <input id="mov-motivo" placeholder="Compra, uso en sesión, vencimiento…" />
+            </div>
+            <div class="form-group" style="flex:0;">
+              <button type="submit">Registrar</button>
+            </div>
+          </form>
+          <p class="error-message" id="mov-error"></p>
+        </div>
+
+        <!-- Listado de insumos -->
+        <div class="card" style="margin-top:1rem;">
+          <div class="toolbar">
+            <h2 style="margin:0;">Inventario</h2>
+            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem;">
+              <input type="checkbox" id="filter-bajo" style="width:auto;" /> Solo stock bajo
+            </label>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Insumo</th><th>Unidad</th><th>Stock actual</th><th>Mínimo</th><th>Precio unit.</th><th>Estado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody id="insumos-body"><tr><td colspan="7">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    const FIELDS = ['nombre','unidad','stock_actual','stock_minimo','precio_unitario'];
+    let cache = [];
+
+    const clearForm = () => {
+      document.getElementById('insumo-id').value = '';
+      document.getElementById('nombre').value = '';
+      document.getElementById('unidad').value = '';
+      document.getElementById('stock_actual').value = '0';
+      document.getElementById('stock_minimo').value = '0';
+      document.getElementById('precio_unitario').value = '';
+      document.getElementById('form-title').textContent = 'Nuevo insumo';
+      document.getElementById('submit-btn').textContent = 'Guardar insumo';
+      document.getElementById('cancel-btn').style.display = 'none';
+      document.getElementById('form-error').textContent = '';
+    };
+
+    const fillForm = (i) => {
+      document.getElementById('insumo-id').value = i.id;
+      FIELDS.forEach(f => document.getElementById(f).value = i[f] ?? '');
+      document.getElementById('form-title').textContent = `Editar: ${i.nombre}`;
+      document.getElementById('submit-btn').textContent = 'Actualizar';
+      document.getElementById('cancel-btn').style.display = 'inline-block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const populateMovInsumo = () => {
+      const sel = document.getElementById('mov-insumo');
+      sel.innerHTML = '<option value="">Seleccionar…</option>' + cache.map(i => `<option value="${i.id}">${i.nombre} (${i.stock_actual} ${i.unidad})</option>`).join('');
+    };
+
+    const renderInsumos = (list) => {
+      const tbody = document.getElementById('insumos-body');
+      if (!list.length) { tbody.innerHTML = '<tr><td colspan="7">Sin insumos.</td></tr>'; return; }
+      tbody.innerHTML = list.map(i => {
+        const bajo = Number(i.stock_actual) <= Number(i.stock_minimo);
+        return `<tr>
+          <td>${i.nombre}</td>
+          <td>${i.unidad}</td>
+          <td style="${bajo ? 'color:var(--color-danger);font-weight:600;' : ''}">${i.stock_actual}</td>
+          <td>${i.stock_minimo}</td>
+          <td>${i.precio_unitario != null ? fmtMoneda(i.precio_unitario) : '–'}</td>
+          <td>${bajo ? '<span class="badge badge-red">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
+          <td>
+            <button class="btn-secondary btn-sm edit-btn" data-id="${i.id}">Editar</button>
+            <button class="btn-danger btn-sm del-btn" data-id="${i.id}">Desactivar</button>
+          </td>
+        </tr>`;
+      }).join('');
+      tbody.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => fillForm(cache.find(x => x.id === b.dataset.id))));
+      tbody.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('¿Desactivar insumo?')) return;
+        await supabaseClient.from('insumos').update({ activo: false }).eq('id', b.dataset.id);
+        await load();
+      }));
+    };
+
+    const applyFilter = () => {
+      const bajo = document.getElementById('filter-bajo').checked;
+      renderInsumos(bajo ? cache.filter(i => Number(i.stock_actual) <= Number(i.stock_minimo)) : cache);
+    };
+
+    const load = async () => {
+      const { data } = await supabaseClient.from('insumos').select('*').eq('activo', true).order('nombre');
+      cache = data || [];
+      populateMovInsumo();
+      applyFilter();
+    };
+
+    document.getElementById('filter-bajo').addEventListener('change', applyFilter);
+    document.getElementById('cancel-btn').addEventListener('click', clearForm);
+
+    document.getElementById('insumo-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('insumo-id').value;
+      const payload = Object.fromEntries(FIELDS.map(f => [f, document.getElementById(f).value || null]));
+      const { error } = id
+        ? await supabaseClient.from('insumos').update(payload).eq('id', id)
+        : await supabaseClient.from('insumos').insert(payload);
+      if (error) { document.getElementById('form-error').textContent = error.message; return; }
+      clearForm(); await load();
+    });
+
+    document.getElementById('mov-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const insId = document.getElementById('mov-insumo').value;
+      const tipo = document.getElementById('mov-tipo').value;
+      const cantidad = Number(document.getElementById('mov-cantidad').value);
+      const motivo = document.getElementById('mov-motivo').value || null;
+      const errorEl = document.getElementById('mov-error');
+      errorEl.textContent = '';
+
+      if (!insId || !cantidad) { errorEl.textContent = 'Seleccioná un insumo e ingresá la cantidad.'; return; }
+
+      const insumo = cache.find(i => i.id === insId);
+      const delta = tipo === 'entrada' ? cantidad : tipo === 'salida' ? -cantidad : cantidad - Number(insumo.stock_actual);
+      const nuevoStock = Number(insumo.stock_actual) + delta;
+
+      const { error: e1 } = await supabaseClient.from('movimientos_stock').insert({ insumo_id: insId, tipo, cantidad, motivo });
+      const { error: e2 } = await supabaseClient.from('insumos').update({ stock_actual: nuevoStock }).eq('id', insId);
+
+      if (e1 || e2) { errorEl.textContent = (e1 || e2).message; return; }
+      document.getElementById('mov-cantidad').value = '';
+      document.getElementById('mov-motivo').value = '';
+      await load();
+    });
+
+    (async () => { const s = await initLayout('stock'); if (!s) return; await load(); })();
+  </script>
+</body>
+</html>

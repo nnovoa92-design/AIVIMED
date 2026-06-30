@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reservar — AIVIMED Salud Integral</title>
+  <meta name="description" content="Reserva tu hora en AIVIMED. Servicios de enfermería, estética facial y corporal. Agenda online." />
+  <meta property="og:title" content="AIVIMED — Reserva tu hora" />
+  <meta property="og:description" content="Agenda online de enfermería y estética. Reserva en minutos." />
+  <meta property="og:type" content="website" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&display=swap" />
+  <style>
+    :root {
+      --primary: #439974;
+      --primary-dark: #2d7558;
+      --primary-light: #e8f5ef;
+      --accent: #c5a44e;
+      --accent-light: #faf4e0;
+      --text: #1a2320;
+      --muted: #6a7a76;
+      --border: #dce5e2;
+      --bg: #f4f6f5;
+      --surface: #fff;
+      --danger: #c0524a;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:'Playfair Display',Georgia,serif; font-style:italic; background:var(--bg); color:var(--text); font-size:0.92rem; }
+    a { color:var(--primary); }
+
+    .page { max-width:520px; margin:0 auto; padding:1rem; min-height:100vh; }
+
+    /* Header */
+    .header { text-align:center; padding:1.5rem 0 1rem; }
+    .header img { width:90px; border-radius:var(--radius); margin-bottom:0.5rem; }
+    .header h1 { margin:0; font-size:1.4rem; color:var(--primary-dark); letter-spacing:0.06em; font-family:'Cinzel Decorative',serif; font-style:normal; }
+    .header .tagline { color:var(--muted); font-size:0.85rem; margin:0.15rem 0 0; }
+
+    /* Steps */
+    .steps { display:flex; gap:0; margin:1.25rem 0; }
+    .step { flex:1; text-align:center; padding:0.5rem 0; font-size:0.75rem; color:var(--muted); border-bottom:3px solid var(--border); }
+    .step.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:700; }
+    .step.done { color:var(--primary); border-bottom-color:var(--primary); }
+
+    .panel { display:none; }
+    .panel.active { display:block; }
+
+    /* Cards de servicios */
+    .cat-title { font-size:0.85rem; color:var(--accent); margin:1.25rem 0 0.5rem; text-transform:uppercase; letter-spacing:0.06em; }
+    .srv-card {
+      background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+      padding:0.85rem 1rem; margin-bottom:0.6rem; cursor:pointer; display:flex; justify-content:space-between; align-items:center;
+      transition: border-color 0.15s;
+    }
+    .srv-card:hover { border-color:var(--primary); }
+    .srv-card.selected { border-color:var(--accent); background:var(--accent-light); }
+    .srv-card .srv-name { font-weight:600; font-size:0.9rem; }
+    .srv-card .srv-meta { font-size:0.78rem; color:var(--muted); }
+    .srv-card .srv-price { font-weight:700; color:var(--primary-dark); font-size:1rem; white-space:nowrap; }
+    .srv-card .srv-consent { font-size:0.68rem; color:var(--accent); }
+
+    /* Calendario inline */
+    .cal-nav { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem; }
+    .cal-nav h3 { margin:0; font-size:0.95rem; }
+    .cal-nav button { background:var(--primary); color:#fff; border:none; border-radius:50%; width:32px; height:32px; cursor:pointer; font-size:1rem; }
+    .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center; font-size:0.8rem; }
+    .cal-header { font-weight:600; color:var(--muted); padding:0.4rem 0; font-size:0.7rem; }
+    .cal-day { padding:0.5rem 0; border-radius:8px; cursor:pointer; }
+    .cal-day:hover { background:var(--primary-light); }
+    .cal-day.today { font-weight:700; color:var(--accent); }
+    .cal-day.selected { background:var(--primary); color:#fff; }
+    .cal-day.disabled { opacity:0.3; cursor:default; }
+    .cal-day.empty { cursor:default; }
+
+    /* Slots horarios */
+    .slots-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:0.5rem; margin-top:0.75rem; }
+    .slot-btn {
+      padding:0.6rem; text-align:center; border:1px solid var(--border); border-radius:var(--radius);
+      background:var(--surface); cursor:pointer; font-size:0.85rem; font-family:inherit;
+    }
+    .slot-btn:hover { border-color:var(--primary); background:var(--primary-light); }
+    .slot-btn.selected { background:var(--primary); color:#fff; border-color:var(--primary); }
+    .slot-btn.taken { opacity:0.35; cursor:not-allowed; text-decoration:line-through; }
+
+    /* Formulario */
+    .form-group { margin-bottom:0.85rem; }
+    label { display:block; font-size:0.78rem; margin-bottom:0.2rem; color:var(--muted); }
+    input, select { width:100%; font-family:inherit; font-size:0.88rem; padding:0.55rem 0.7rem; border:1px solid var(--border); border-radius:var(--radius); background:#fff; color:var(--text); }
+    input:focus, select:focus { outline:2px solid var(--primary); outline-offset:1px; }
+
+    .btn { display:block; width:100%; font-family:inherit; font-size:0.95rem; padding:0.7rem; border-radius:var(--radius); border:none; background:var(--primary); color:#fff; cursor:pointer; font-weight:600; letter-spacing:0.03em; }
+    .btn:hover { background:var(--primary-dark); }
+    .btn-accent { background:var(--accent); }
+    .btn-accent:hover { background:#a8892e; }
+    .btn-outline { background:transparent; border:1px solid var(--primary); color:var(--primary); }
+    .btn-outline:hover { background:var(--primary); color:#fff; }
+    .btn-back { background:transparent; border:none; color:var(--muted); cursor:pointer; font-size:0.85rem; padding:0.5rem 0; font-family:inherit; }
+
+    .error-msg { color:var(--danger); font-size:0.82rem; margin-top:0.5rem; }
+
+    /* Confirmación */
+    .confirm-card {
+      background:var(--surface); border:2px solid var(--accent); border-radius:var(--radius);
+      padding:1.5rem; text-align:center;
+    }
+    .confirm-card h2 { color:var(--primary-dark); margin:0 0 0.5rem; }
+    .confirm-detail { text-align:left; font-size:0.85rem; margin:1rem 0; }
+    .confirm-detail .row { display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid var(--border); }
+    .confirm-detail .row-label { color:var(--muted); }
+
+    .share-btns { display:flex; gap:0.5rem; margin-top:1rem; }
+    .share-btns a { flex:1; text-align:center; padding:0.6rem; border-radius:var(--radius); text-decoration:none; font-size:0.82rem; font-weight:600; }
+    .share-wa { background:#25d366; color:#fff; }
+    .share-ig { background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888); color:#fff; }
+
+    .footer { text-align:center; padding:1.5rem 0; font-size:0.75rem; color:var(--muted); }
+    .footer a { color:var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <!-- Header -->
+    <div class="header">
+      <img src="assets/img/logo.png" alt="AIVIMED" onerror="this.style.display='none'" />
+      <h1>AIVIMED</h1>
+      <p class="tagline">Salud Integral — Reserva tu hora</p>
+    </div>
+
+    <!-- Progress steps -->
+    <div class="steps">
+      <div class="step active" data-step="1">1. Servicio</div>
+      <div class="step" data-step="2">2. Fecha y hora</div>
+      <div class="step" data-step="3">3. Tus datos</div>
+    </div>
+
+    <!-- Panel 1: Catálogo de servicios -->
+    <div class="panel active" id="panel-1">
+      <div id="catalogo">Cargando servicios...</div>
+      <p class="error-msg" id="error-1"></p>
+      <button class="btn" id="btn-next-1" style="margin-top:1rem;" disabled>Elegir fecha y hora &rarr;</button>
+    </div>
+
+    <!-- Panel 2: Fecha y hora -->
+    <div class="panel" id="panel-2">
+      <button class="btn-back" id="btn-back-2">&larr; Volver a servicios</button>
+      <div id="calendario"></div>
+      <div id="slots-container" style="margin-top:0.5rem;">
+        <p style="color:var(--muted);font-size:0.85rem;">Seleccioná un día para ver los horarios disponibles.</p>
+      </div>
+      <p class="error-msg" id="error-2"></p>
+      <button class="btn" id="btn-next-2" style="margin-top:1rem;" disabled>Completar datos &rarr;</button>
+    </div>
+
+    <!-- Panel 3: Datos del paciente -->
+    <div class="panel" id="panel-3">
+      <button class="btn-back" id="btn-back-3">&larr; Volver a fecha y hora</button>
+      <h3 style="margin-top:0.5rem;">Completá tus datos</h3>
+      <form id="reserva-form">
+        <div class="form-group"><label>Nombre *</label><input id="r-nombre" required /></div>
+        <div class="form-group"><label>Apellido *</label><input id="r-apellido" required /></div>
+        <div class="form-group"><label>RUT</label><input id="r-rut" placeholder="12.345.678-9" /></div>
+        <div class="form-group"><label>Teléfono *</label><input id="r-telefono" required placeholder="+56 9 1234 5678" /></div>
+        <div class="form-group"><label>Email</label><input type="email" id="r-email" /></div>
+        <div class="form-group"><label>Notas o comentarios</label><input id="r-notas" placeholder="Información adicional…" /></div>
+
+        <!-- Resumen -->
+        <div style="background:var(--primary-light);border-radius:var(--radius);padding:0.85rem;margin:1rem 0;font-size:0.85rem;">
+          <strong>Resumen de tu reserva:</strong>
+          <div id="resumen-reserva"></div>
+        </div>
+
+        <button type="submit" class="btn btn-accent">Confirmar reserva</button>
+        <p class="error-msg" id="error-3"></p>
+      </form>
+    </div>
+
+    <!-- Panel 4: Confirmación -->
+    <div class="panel" id="panel-4">
+      <div class="confirm-card">
+        <div style="font-size:2rem;margin-bottom:0.5rem;">&#10003;</div>
+        <h2>Reserva confirmada</h2>
+        <p style="color:var(--muted);font-size:0.88rem;">Te esperamos en AIVIMED</p>
+        <div class="confirm-detail" id="confirm-detail"></div>
+      </div>
+
+      <div class="share-btns">
+        <a class="share-wa" id="share-wa" href="#" target="_blank">Compartir por WhatsApp</a>
+      </div>
+
+      <button class="btn btn-outline" style="margin-top:1rem;" onclick="location.reload()">Hacer otra reserva</button>
+    </div>
+
+    <div class="footer">
+      <p>AIVIMED — Salud Integral</p>
+      <p>Lunes a Viernes 09:30 – 19:30 · Sábados 10:00 – 14:00</p>
+    </div>
+  </div>
+
+  <script src="assets/vendor/supabase.min.js"></script>
+  <script>
+    // Cliente público (schema bienestar, sin auth)
+    const sb = supabase.createClient(
+      'https://qaeeqdfolgjobwxdpojd.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhZWVxZGZvbGdqb2J3eGRwb2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjUxMDQsImV4cCI6MjA5NjcwMTEwNH0.HgGiUKN38A-anizmwPZOLftFBZXsyG862ibF2LwnRAs',
+      { db: { schema: 'bienestar' } }
+    );
+
+    const HORARIOS = {
+      1:{desde:'09:30',hasta:'19:30'}, 2:{desde:'09:30',hasta:'19:30'}, 3:{desde:'09:30',hasta:'19:30'},
+      4:{desde:'09:30',hasta:'19:30'}, 5:{desde:'09:30',hasta:'19:30'}, 6:{desde:'10:00',hasta:'14:00'},
+    };
+    const SLOT_MIN = 60;
+    const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    const DIAS_CAL = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
+
+    let selectedService = null;
+    let selectedDate = null;
+    let selectedSlot = null;
+    let calMonth, calYear;
+    let turnosOcupados = [];
+
+    function fmtPrecio(n) {
+      if (n == null) return '';
+      return Number(n).toLocaleString('es-CL', { style:'currency', currency:'CLP', maximumFractionDigits:0 });
+    }
+
+    function getSlots(dow) {
+      const h = HORARIOS[dow]; if (!h) return [];
+      const slots = [];
+      let [hh,mm] = h.desde.split(':').map(Number);
+      const [eh,em] = h.hasta.split(':').map(Number);
+      while (hh < eh || (hh===eh && mm < em)) {
+        slots.push(`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`);
+        mm += SLOT_MIN; if (mm>=60){hh+=Math.floor(mm/60);mm%=60;}
+      }
+      return slots;
+    }
+
+    // ─── STEP NAVIGATION ───
+    function goTo(step) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.getElementById(`panel-${step}`).classList.add('active');
+      document.querySelectorAll('.step').forEach(s => {
+        const n = Number(s.dataset.step);
+        s.classList.toggle('active', n === step);
+        s.classList.toggle('done', n < step);
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ─── PANEL 1: CATÁLOGO ───
+    async function loadCatalogo() {
+      const [{ data: cats }, { data: servicios }] = await Promise.all([
+        sb.from('categorias_servicios').select('*').order('orden'),
+        sb.from('servicios').select('*').eq('activo', true).order('nombre'),
+      ]);
+
+      const container = document.getElementById('catalogo');
+      if (!servicios?.length) { container.innerHTML = '<p>No hay servicios disponibles.</p>'; return; }
+
+      let html = '';
+      for (const cat of (cats || [])) {
+        const srvs = servicios.filter(s => s.categoria_id === cat.id);
+        if (!srvs.length) continue;
+        html += `<div class="cat-title">${cat.nombre}</div>`;
+        for (const s of srvs) {
+          const precio = s.precio != null ? fmtPrecio(s.precio) : '<span style="font-size:0.78rem;color:var(--muted);">Consultar</span>';
+          const dur = s.duracion_min ? `${s.duracion_min} min` : '';
+          const consent = s.requiere_consentimiento ? '<div class="srv-consent">Requiere consentimiento</div>' : '';
+          html += `<div class="srv-card" data-id="${s.id}">
+            <div>
+              <div class="srv-name">${s.nombre}</div>
+              <div class="srv-meta">${dur}${s.descripcion ? ' · ' + s.descripcion : ''}</div>
+              ${consent}
+            </div>
+            <div class="srv-price">${precio}</div>
+          </div>`;
+        }
+      }
+      // Servicios sin categoría
+      const sinCat = servicios.filter(s => !s.categoria_id);
+      if (sinCat.length) {
+        html += '<div class="cat-title">Otros servicios</div>';
+        sinCat.forEach(s => {
+          html += `<div class="srv-card" data-id="${s.id}"><div><div class="srv-name">${s.nombre}</div></div><div class="srv-price">${s.precio!=null?fmtPrecio(s.precio):'Consultar'}</div></div>`;
+        });
+      }
+      container.innerHTML = html;
+
+      container.querySelectorAll('.srv-card').forEach(card => {
+        card.addEventListener('click', () => {
+          container.querySelectorAll('.srv-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          selectedService = servicios.find(s => s.id === card.dataset.id);
+          document.getElementById('btn-next-1').disabled = false;
+        });
+      });
+    }
+
+    document.getElementById('btn-next-1').addEventListener('click', () => {
+      if (!selectedService) return;
+      const now = new Date();
+      calMonth = now.getMonth();
+      calYear = now.getFullYear();
+      renderCalendar();
+      goTo(2);
+    });
+
+    // ─── PANEL 2: CALENDARIO + SLOTS ───
+    function renderCalendar() {
+      const container = document.getElementById('calendario');
+      const first = new Date(calYear, calMonth, 1);
+      const startDow = first.getDay() === 0 ? 6 : first.getDay() - 1;
+      const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+      const hoy = new Date(); hoy.setHours(0,0,0,0);
+      const monthName = first.toLocaleDateString('es-CL', { month:'long', year:'numeric' });
+
+      let html = `<div class="cal-nav">
+        <button type="button" id="cal-prev">&larr;</button>
+        <h3>${monthName}</h3>
+        <button type="button" id="cal-next">&rarr;</button>
+      </div>`;
+      html += '<div class="cal-grid">';
+      DIAS_CAL.forEach(d => html += `<div class="cal-header">${d}</div>`);
+      for (let i = 0; i < startDow; i++) html += '<div class="cal-day empty"></div>';
+      for (let d = 1; d <= daysInMonth; d++) {
+        const date = new Date(calYear, calMonth, d);
+        const dow = date.getDay();
+        const isPast = date < hoy;
+        const isClosed = dow === 0;
+        const disabled = isPast || isClosed;
+        const isToday = date.getTime() === hoy.getTime();
+        const isSel = selectedDate && date.toDateString() === selectedDate.toDateString();
+        const cls = ['cal-day'];
+        if (disabled) cls.push('disabled');
+        if (isToday) cls.push('today');
+        if (isSel) cls.push('selected');
+        html += `<div class="${cls.join(' ')}" data-date="${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}">${d}</div>`;
+      }
+      html += '</div>';
+      container.innerHTML = html;
+
+      document.getElementById('cal-prev').addEventListener('click', () => { calMonth--; if (calMonth<0){calMonth=11;calYear--;} renderCalendar(); });
+      document.getElementById('cal-next').addEventListener('click', () => { calMonth++; if (calMonth>11){calMonth=0;calYear++;} renderCalendar(); });
+
+      container.querySelectorAll('.cal-day:not(.disabled):not(.empty)').forEach(el => {
+        el.addEventListener('click', async () => {
+          container.querySelectorAll('.cal-day').forEach(c => c.classList.remove('selected'));
+          el.classList.add('selected');
+          selectedDate = new Date(el.dataset.date + 'T00:00:00');
+          selectedSlot = null;
+          document.getElementById('btn-next-2').disabled = true;
+          await renderSlots();
+        });
+      });
+    }
+
+    async function renderSlots() {
+      const container = document.getElementById('slots-container');
+      const dow = selectedDate.getDay();
+      const slots = getSlots(dow);
+      if (!slots.length) { container.innerHTML = '<p style="color:var(--muted);">Día cerrado.</p>'; return; }
+
+      // Cargar turnos existentes de ese día
+      const dayStr = selectedDate.toISOString().slice(0,10);
+      const { data: turnos } = await sb.from('turnos')
+        .select('fecha_hora')
+        .gte('fecha_hora', dayStr + 'T00:00:00')
+        .lte('fecha_hora', dayStr + 'T23:59:59')
+        .not('estado', 'eq', 'cancelado');
+      turnosOcupados = (turnos || []).map(t => new Date(t.fecha_hora).toTimeString().slice(0,5));
+
+      // No mostrar slots pasados si es hoy
+      const ahora = new Date();
+      const esHoy = selectedDate.toDateString() === ahora.toDateString();
+
+      let html = '<div class="slots-grid">';
+      for (const slot of slots) {
+        const taken = turnosOcupados.includes(slot);
+        const [sh, sm] = slot.split(':').map(Number);
+        const slotTime = new Date(selectedDate);
+        slotTime.setHours(sh, sm, 0, 0);
+        const isPast = esHoy && slotTime <= ahora;
+
+        if (isPast) {
+          html += `<div class="slot-btn taken">${slot}</div>`;
+        } else if (taken) {
+          html += `<div class="slot-btn taken">${slot} ocupado</div>`;
+        } else {
+          html += `<div class="slot-btn" data-slot="${slot}">${slot}</div>`;
+        }
+      }
+      html += '</div>';
+      container.innerHTML = html;
+
+      container.querySelectorAll('.slot-btn:not(.taken)').forEach(el => {
+        el.addEventListener('click', () => {
+          container.querySelectorAll('.slot-btn').forEach(c => c.classList.remove('selected'));
+          el.classList.add('selected');
+          selectedSlot = el.dataset.slot;
+          document.getElementById('btn-next-2').disabled = false;
+        });
+      });
+    }
+
+    document.getElementById('btn-back-2').addEventListener('click', () => goTo(1));
+    document.getElementById('btn-next-2').addEventListener('click', () => {
+      if (!selectedDate || !selectedSlot) return;
+      const fechaStr = selectedDate.toLocaleDateString('es-CL', { weekday:'long', day:'numeric', month:'long' });
+      document.getElementById('resumen-reserva').innerHTML = `
+        <div style="margin-top:0.5rem;"><strong>${selectedService.nombre}</strong></div>
+        <div>${fechaStr} a las ${selectedSlot} hrs</div>
+        ${selectedService.precio != null ? '<div>' + fmtPrecio(selectedService.precio) + '</div>' : ''}
+      `;
+      goTo(3);
+    });
+
+    // ─── PANEL 3: DATOS + CONFIRMAR ───
+    document.getElementById('btn-back-3').addEventListener('click', () => goTo(2));
+
+    document.getElementById('reserva-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('error-3');
+      errorEl.textContent = '';
+
+      const nombre = document.getElementById('r-nombre').value.trim();
+      const apellido = document.getElementById('r-apellido').value.trim();
+      const telefono = document.getElementById('r-telefono').value.trim();
+      if (!nombre || !apellido || !telefono) { errorEl.textContent = 'Completá nombre, apellido y teléfono.'; return; }
+
+      // Buscar si el paciente ya existe (por teléfono)
+      let pacienteId;
+      const { data: existente } = await sb.from('pacientes').select('id').eq('telefono', telefono).limit(1);
+      if (existente?.length) {
+        pacienteId = existente[0].id;
+      } else {
+        const { data: nuevo, error: errPac } = await sb.from('pacientes').insert({
+          nombre,
+          apellido,
+          dni: document.getElementById('r-rut').value || null,
+          telefono,
+          email: document.getElementById('r-email').value || null,
+        }).select('id').single();
+        if (errPac) { errorEl.textContent = 'Error al registrar datos: ' + errPac.message; return; }
+        pacienteId = nuevo.id;
+      }
+
+      // Crear turno
+      const fechaHora = `${selectedDate.toISOString().slice(0,10)}T${selectedSlot}:00`;
+      const { error: errTurno } = await sb.from('turnos').insert({
+        paciente_id: pacienteId,
+        servicio_id: selectedService.id,
+        fecha_hora: fechaHora,
+        duracion_min: selectedService.duracion_min || 60,
+        estado: 'pendiente',
+        notas: document.getElementById('r-notas').value || null,
+      });
+      if (errTurno) { errorEl.textContent = 'Error al reservar: ' + errTurno.message; return; }
+
+      // Confirmación
+      const fechaStr = selectedDate.toLocaleDateString('es-CL', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+      document.getElementById('confirm-detail').innerHTML = `
+        <div class="row"><span class="row-label">Servicio</span><span>${selectedService.nombre}</span></div>
+        <div class="row"><span class="row-label">Fecha</span><span>${fechaStr}</span></div>
+        <div class="row"><span class="row-label">Hora</span><span>${selectedSlot} hrs</span></div>
+        <div class="row"><span class="row-label">Paciente</span><span>${nombre} ${apellido}</span></div>
+        ${selectedService.precio != null ? `<div class="row"><span class="row-label">Precio</span><span>${fmtPrecio(selectedService.precio)}</span></div>` : ''}
+      `;
+
+      // Link WhatsApp
+      const msgWa = `Hola AIVIMED! Reservé una hora:\n- Servicio: ${selectedService.nombre}\n- Fecha: ${fechaStr}\n- Hora: ${selectedSlot}\n- Nombre: ${nombre} ${apellido}\n- Teléfono: ${telefono}`;
+      document.getElementById('share-wa').href = `https://wa.me/?text=${encodeURIComponent(msgWa)}`;
+
+      goTo(4);
+    });
+
+    // Init
+    loadCatalogo();
+  </script>
+</body>
+</html>

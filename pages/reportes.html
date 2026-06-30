@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reportes · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Reportes</h1></header>
+      <div class="content">
+
+        <div class="card">
+          <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem;">
+            <img src="../assets/img/logo.png" alt="AIVIMED" style="width:60px;border-radius:8px;object-fit:contain;" onerror="this.style.display='none'" />
+            <div><strong style="font-family:'Cinzel Decorative',serif;font-style:normal;font-size:1.4rem;color:var(--color-primary-dark);letter-spacing:0.04em;">AIVIMED</strong><br><span style="font-size:0.82rem;color:var(--color-accent);letter-spacing:0.08em;">Reporte de gestión</span></div>
+          </div>
+          <hr class="divider" />
+          <div class="toolbar" style="margin-bottom:1.25rem;">
+            <h2 style="margin:0;">Filtro de período</h2>
+            <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+              <div>
+                <label style="font-size:0.78rem;">Desde</label>
+                <input type="date" id="fecha-desde" />
+              </div>
+              <div>
+                <label style="font-size:0.78rem;">Hasta</label>
+                <input type="date" id="fecha-hasta" />
+              </div>
+              <button type="button" id="btn-cargar">Generar</button>
+            </div>
+          </div>
+
+          <div class="cards-grid" id="resumen-cards"></div>
+        </div>
+
+        <div class="card" style="margin-top:1rem;">
+          <h2 style="margin-top:0;">Servicios más realizados</h2>
+          <table>
+            <thead><tr><th>Servicio</th><th>Sesiones</th></tr></thead>
+            <tbody id="top-servicios-body"><tr><td colspan="2">Generá el reporte para ver datos.</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:1rem;">
+          <h2 style="margin-top:0;">Pagos por método</h2>
+          <table>
+            <thead><tr><th>Método</th><th>Cantidad</th><th>Total</th></tr></thead>
+            <tbody id="pagos-metodo-body"><tr><td colspan="3">Generá el reporte para ver datos.</td></tr></tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:1rem;">
+          <h2 style="margin-top:0;">Pacientes más activos</h2>
+          <table>
+            <thead><tr><th>Paciente</th><th>Sesiones</th></tr></thead>
+            <tbody id="top-pacientes-body"><tr><td colspan="2">Generá el reporte para ver datos.</td></tr></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    const METODOS = { efectivo:'Efectivo', tarjeta_debito:'Débito', tarjeta_credito:'Crédito', transferencia:'Transferencia', otro:'Otro' };
+
+    const card = (value, label) => `<div class="card stat-card"><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>`;
+
+    async function generar() {
+      const desde = document.getElementById('fecha-desde').value;
+      const hasta = document.getElementById('fecha-hasta').value;
+      if (!desde || !hasta) { alert('Seleccioná un período.'); return; }
+
+      const desdeISO = desde + 'T00:00:00';
+      const hastaISO = hasta + 'T23:59:59';
+
+      const [
+        { count: turnos },
+        { count: sesiones },
+        { data: pagos },
+        { data: sesData },
+      ] = await Promise.all([
+        supabaseClient.from('turnos').select('*', { count:'exact', head:true })
+          .gte('fecha_hora', desdeISO).lte('fecha_hora', hastaISO),
+        supabaseClient.from('sesiones').select('*', { count:'exact', head:true })
+          .gte('fecha', desdeISO).lte('fecha', hastaISO),
+        supabaseClient.from('pagos').select('monto,metodo_pago')
+          .gte('fecha', desdeISO).lte('fecha', hastaISO),
+        supabaseClient.from('sesiones')
+          .select('servicio_id, servicios(nombre), paciente_id, pacientes(nombre,apellido)')
+          .gte('fecha', desdeISO).lte('fecha', hastaISO),
+      ]);
+
+      const totalIngresos = (pagos||[]).reduce((s,p) => s + Number(p.monto||0), 0);
+      const pacientesUnicos = new Set((sesData||[]).map(s => s.paciente_id)).size;
+
+      document.getElementById('resumen-cards').innerHTML = [
+        card(turnos ?? 0, 'Turnos en el período'),
+        card(sesiones ?? 0, 'Sesiones realizadas'),
+        card(pacientesUnicos, 'Pacientes atendidos'),
+        card(fmtMoneda(totalIngresos), 'Ingresos del período'),
+      ].join('');
+
+      // Top servicios
+      const srvCount = {};
+      (sesData||[]).forEach(s => {
+        const nombre = s.servicios?.nombre ?? 'Sin servicio';
+        srvCount[nombre] = (srvCount[nombre] || 0) + 1;
+      });
+      const topSrv = Object.entries(srvCount).sort((a,b) => b[1]-a[1]).slice(0,10);
+      const tbody1 = document.getElementById('top-servicios-body');
+      tbody1.innerHTML = topSrv.length
+        ? topSrv.map(([n,c]) => `<tr><td>${n}</td><td>${c}</td></tr>`).join('')
+        : '<tr><td colspan="2">Sin datos.</td></tr>';
+
+      // Pagos por método
+      const metCount = {}; const metTotal = {};
+      (pagos||[]).forEach(p => {
+        const m = p.metodo_pago || 'otro';
+        metCount[m] = (metCount[m] || 0) + 1;
+        metTotal[m] = (metTotal[m] || 0) + Number(p.monto||0);
+      });
+      const tbody2 = document.getElementById('pagos-metodo-body');
+      tbody2.innerHTML = Object.keys(metCount).length
+        ? Object.entries(metCount).map(([m,c]) => `<tr><td>${METODOS[m]||m}</td><td>${c}</td><td>${fmtMoneda(metTotal[m])}</td></tr>`).join('')
+        : '<tr><td colspan="3">Sin datos.</td></tr>';
+
+      // Top pacientes
+      const pacCount = {};
+      (sesData||[]).forEach(s => {
+        const nombre = s.pacientes ? `${s.pacientes.nombre} ${s.pacientes.apellido}` : 'Desconocido';
+        pacCount[nombre] = (pacCount[nombre] || 0) + 1;
+      });
+      const topPac = Object.entries(pacCount).sort((a,b) => b[1]-a[1]).slice(0,10);
+      const tbody3 = document.getElementById('top-pacientes-body');
+      tbody3.innerHTML = topPac.length
+        ? topPac.map(([n,c]) => `<tr><td>${n}</td><td>${c}</td></tr>`).join('')
+        : '<tr><td colspan="2">Sin datos.</td></tr>';
+    }
+
+    document.getElementById('btn-cargar').addEventListener('click', generar);
+
+    (async () => {
+      const s = await initLayout('reportes');
+      if (!s) return;
+
+      // Precargar mes actual
+      const hoy = new Date();
+      const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      document.getElementById('fecha-desde').value = primerDia.toISOString().slice(0,10);
+      document.getElementById('fecha-hasta').value = hoy.toISOString().slice(0,10);
+    })();
+  </script>
+</body>
+</html>

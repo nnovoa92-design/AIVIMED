@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agenda · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .agenda-nav { display:flex; align-items:center; gap:0.5rem; }
+    .agenda-nav h2 { margin:0; font-size:0.95rem; min-width:220px; text-align:center; }
+    .view-tabs { display:flex; gap:0; }
+    .view-tabs button { border-radius:0; border-right:none; font-size:0.78rem; padding:0.35rem 0.8rem; }
+    .view-tabs button:first-child { border-radius:var(--radius) 0 0 var(--radius); }
+    .view-tabs button:last-child { border-radius:0 var(--radius) var(--radius) 0; border-right:1px solid var(--color-primary); }
+    .view-tabs button.active { background:var(--color-primary); color:#fff; }
+    .view-tabs button:not(.active) { background:transparent; color:var(--color-primary); }
+
+    /* Grilla día */
+    .agenda-grid { display:grid; grid-template-columns:70px 1fr; border:1px solid var(--color-border); border-radius:var(--radius); overflow:hidden; }
+    .hora-label { padding:0.4rem; font-size:0.75rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border); border-right:1px solid var(--color-border); background:var(--color-bg); text-align:center; min-height:52px; display:flex; align-items:center; justify-content:center; }
+    .hora-slot { padding:0.3rem 0.5rem; border-bottom:1px solid var(--color-border); min-height:52px; cursor:pointer; }
+    .hora-slot:hover { background:var(--color-primary-light); }
+
+    /* Grilla semana */
+    .week-grid { display:grid; grid-template-columns:70px repeat(6,1fr); border:1px solid var(--color-border); border-radius:var(--radius); overflow:hidden; font-size:0.78rem; }
+    .week-header { padding:0.5rem 0.3rem; text-align:center; font-weight:600; background:var(--color-primary-dark); color:#fff; font-size:0.72rem; border-right:1px solid rgba(255,255,255,0.1); }
+    .week-header.corner { background:var(--color-primary-dark); }
+    .week-hora { padding:0.3rem; font-size:0.72rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border); border-right:1px solid var(--color-border); background:var(--color-bg); text-align:center; min-height:40px; display:flex; align-items:center; justify-content:center; }
+    .week-cell { padding:0.15rem 0.2rem; border-bottom:1px solid var(--color-border); border-right:1px solid var(--color-border); min-height:40px; cursor:pointer; overflow:hidden; }
+    .week-cell:hover { background:var(--color-primary-light); }
+
+    /* Grilla mes */
+    .month-grid { display:grid; grid-template-columns:repeat(7,1fr); border:1px solid var(--color-border); border-radius:var(--radius); overflow:hidden; }
+    .month-header { padding:0.5rem; text-align:center; font-weight:600; background:var(--color-primary-dark); color:#fff; font-size:0.75rem; border-right:1px solid rgba(255,255,255,0.1); }
+    .month-cell { padding:0.4rem; border-bottom:1px solid var(--color-border); border-right:1px solid var(--color-border); min-height:80px; font-size:0.75rem; cursor:pointer; }
+    .month-cell:hover { background:var(--color-primary-light); }
+    .month-cell .day-num { font-weight:600; margin-bottom:0.2rem; font-size:0.8rem; }
+    .month-cell.today .day-num { color:var(--color-accent); }
+    .month-cell.other-month { opacity:0.35; }
+    .month-cell.domingo { background:var(--color-bg); cursor:default; }
+    .month-turno { background:var(--color-primary-light); border-left:2px solid var(--color-primary); border-radius:2px; padding:0.1rem 0.3rem; margin-bottom:0.15rem; font-size:0.68rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .month-turno.completado { border-left-color:var(--color-success); }
+    .month-turno.cancelado { border-left-color:var(--color-danger); opacity:0.5; }
+    .month-more { color:var(--color-text-muted); font-size:0.65rem; }
+
+    /* Turnos en slots */
+    .slot-turno { background:var(--color-primary-light); border-left:3px solid var(--color-primary); border-radius:4px; padding:0.2rem 0.4rem; font-size:0.75rem; margin-bottom:0.2rem; cursor:pointer; }
+    .slot-turno:hover { background:var(--color-primary); color:#fff; }
+    .slot-turno .slot-paciente { font-weight:600; }
+    .slot-turno .slot-servicio { opacity:0.8; font-size:0.68rem; }
+    .slot-turno.completado { border-left-color:var(--color-success); background:#d3ede0; }
+    .slot-turno.cancelado { border-left-color:var(--color-danger); background:#fad5d3; opacity:0.6; }
+    .slot-turno.confirmado { border-left-color:#1a4f8a; background:#d3e4f5; }
+    .slot-turno.ausente { border-left-color:var(--color-warning); background:#fdf0d3; }
+
+    .dia-cerrado { background:var(--color-bg); color:var(--color-text-muted); text-align:center; padding:2rem; font-style:italic; border-radius:var(--radius); }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Agenda</h1></header>
+      <div class="content">
+
+        <!-- Formulario turno -->
+        <div class="card" id="form-card" style="display:none;">
+          <h2 id="form-title" style="margin-top:0;">Nuevo turno</h2>
+          <form id="turno-form">
+            <input type="hidden" id="turno-id" />
+            <div class="form-row">
+              <div class="form-group"><label>Paciente *</label><select id="paciente_id" required><option value="">Seleccionar…</option></select></div>
+              <div class="form-group"><label>Servicio</label><select id="servicio_id"><option value="">Seleccionar…</option></select></div>
+              <div class="form-group"><label>Profesional</label><select id="personal_id"><option value="">Sin asignar</option></select></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Fecha y hora *</label><input type="datetime-local" id="fecha_hora" required /></div>
+              <div class="form-group"><label>Duración (min)</label><input type="number" id="duracion_min" min="0" value="60" /></div>
+              <div class="form-group"><label>Estado</label>
+                <select id="estado">
+                  <option value="pendiente">Pendiente</option><option value="confirmado">Confirmado</option>
+                  <option value="completado">Completado</option><option value="cancelado">Cancelado</option><option value="ausente">Ausente</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group"><label>Notas</label><textarea id="notas" rows="2"></textarea></div>
+            <button type="submit" id="submit-btn">Guardar turno</button>
+            <button type="button" id="cancel-btn" class="btn-secondary">Cancelar</button>
+            <button type="button" id="delete-btn" class="btn-danger" style="display:none;">Eliminar</button>
+            <p class="error-message" id="form-error"></p>
+          </form>
+        </div>
+
+        <!-- Controles -->
+        <div class="card">
+          <div class="toolbar">
+            <div class="agenda-nav">
+              <button type="button" id="prev-btn" class="btn-secondary btn-sm">&larr;</button>
+              <h2 id="fecha-label">–</h2>
+              <button type="button" id="next-btn" class="btn-secondary btn-sm">&rarr;</button>
+            </div>
+            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+              <div class="view-tabs">
+                <button class="active" data-view="dia">Día</button>
+                <button data-view="semana">Semana</button>
+                <button data-view="mes">Mes</button>
+              </div>
+              <button type="button" id="btn-hoy" class="btn-secondary btn-sm">Hoy</button>
+              <button type="button" id="btn-nuevo" class="btn btn-sm">+ Nuevo turno</button>
+            </div>
+          </div>
+          <div id="agenda-container"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    const HORARIOS = {
+      1:{desde:'09:30',hasta:'19:30'}, 2:{desde:'09:30',hasta:'19:30'}, 3:{desde:'09:30',hasta:'19:30'},
+      4:{desde:'09:30',hasta:'19:30'}, 5:{desde:'09:30',hasta:'19:30'}, 6:{desde:'10:00',hasta:'14:00'},
+    };
+    const SLOT_MIN = 60;
+    const DIAS_SEMANA = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+    const DIAS_MES_HEADER = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+
+    let currentDate = new Date(); currentDate.setHours(0,0,0,0);
+    let currentView = 'dia';
+    let turnosCache = [];
+
+    function getSlots(dow) {
+      const h = HORARIOS[dow]; if (!h) return null;
+      const slots = [];
+      let [hh,mm] = h.desde.split(':').map(Number);
+      const [eh,em] = h.hasta.split(':').map(Number);
+      while (hh < eh || (hh===eh && mm < em)) {
+        slots.push(`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`);
+        mm += SLOT_MIN; if (mm>=60){hh+=Math.floor(mm/60);mm%=60;}
+      }
+      return slots;
+    }
+
+    function fmtLabel() {
+      if (currentView === 'dia') return currentDate.toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      if (currentView === 'semana') {
+        const mon = getMonday(currentDate);
+        const sat = new Date(mon); sat.setDate(mon.getDate()+5);
+        return `${mon.getDate()}/${mon.getMonth()+1} — ${sat.getDate()}/${sat.getMonth()+1}/${sat.getFullYear()}`;
+      }
+      return currentDate.toLocaleDateString('es-AR',{month:'long',year:'numeric'});
+    }
+
+    function getMonday(d) { const m=new Date(d); const day=m.getDay(); m.setDate(m.getDate()-(day===0?6:day-1)); m.setHours(0,0,0,0); return m; }
+
+    function turnoHTML(t, compact) {
+      const pac = t.pacientes ? `${t.pacientes.nombre} ${t.pacientes.apellido}` : '';
+      const srv = t.servicios?.nombre ?? '';
+      const hora = new Date(t.fecha_hora).toLocaleTimeString('es-AR',{timeStyle:'short'});
+      if (compact) return `<div class="month-turno ${t.estado}" data-id="${t.id}" title="${hora} ${pac} — ${srv}">${hora} ${pac.split(' ')[0]||''}</div>`;
+      return `<div class="slot-turno ${t.estado}" data-id="${t.id}"><span class="slot-paciente">${hora} — ${pac}</span> <span class="slot-servicio">${srv}</span></div>`;
+    }
+
+    function turnosInRange(start, end) {
+      return turnosCache.filter(t => { const d=new Date(t.fecha_hora); return d>=start && d<end; });
+    }
+
+    // ─── Vista DÍA ───
+    function renderDia() {
+      const container = document.getElementById('agenda-container');
+      const dow = currentDate.getDay();
+      const slots = getSlots(dow);
+      if (!slots) { container.innerHTML='<div class="dia-cerrado">Domingo — Centro cerrado</div>'; return; }
+      let html='<div class="agenda-grid">';
+      for (const slot of slots) {
+        const [sh,sm]=slot.split(':').map(Number);
+        const s=new Date(currentDate); s.setHours(sh,sm,0,0);
+        const e=new Date(s.getTime()+SLOT_MIN*60000);
+        const tt=turnosInRange(s,e);
+        const dt=`${currentDate.toISOString().slice(0,10)}T${slot}`;
+        html+=`<div class="hora-label">${slot}</div><div class="hora-slot" data-slot="${dt}">${tt.map(t=>turnoHTML(t,false)).join('')}</div>`;
+      }
+      html+='</div>';
+      container.innerHTML=html;
+      bindSlotClicks(container);
+    }
+
+    // ─── Vista SEMANA ───
+    function renderSemana() {
+      const container=document.getElementById('agenda-container');
+      const mon=getMonday(currentDate);
+      // L-S (6 días, sin domingo)
+      let html='<div class="week-grid"><div class="week-header corner"></div>';
+      const days=[];
+      for (let i=0;i<6;i++) {
+        const d=new Date(mon); d.setDate(mon.getDate()+i);
+        days.push(d);
+        const isToday = d.toDateString()===new Date().toDateString();
+        html+=`<div class="week-header" style="${isToday?'background:var(--color-accent);':''}">${DIAS_SEMANA[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}</div>`;
+      }
+      // All possible slots (union of all days)
+      const allSlots = new Set();
+      days.forEach(d => { const s=getSlots(d.getDay()); if(s) s.forEach(x=>allSlots.add(x)); });
+      const sortedSlots=[...allSlots].sort();
+      for (const slot of sortedSlots) {
+        const [sh,sm]=slot.split(':').map(Number);
+        html+=`<div class="week-hora">${slot}</div>`;
+        for (const d of days) {
+          const daySlots=getSlots(d.getDay());
+          if (!daySlots||!daySlots.includes(slot)) { html+=`<div class="week-cell" style="background:var(--color-bg);cursor:default;"></div>`; continue; }
+          const s=new Date(d); s.setHours(sh,sm,0,0);
+          const e=new Date(s.getTime()+SLOT_MIN*60000);
+          const tt=turnosInRange(s,e);
+          const dt=`${d.toISOString().slice(0,10)}T${slot}`;
+          html+=`<div class="week-cell" data-slot="${dt}">${tt.map(t=>turnoHTML(t,true)).join('')}</div>`;
+        }
+      }
+      html+='</div>';
+      container.innerHTML=html;
+      bindSlotClicks(container);
+    }
+
+    // ─── Vista MES ───
+    function renderMes() {
+      const container=document.getElementById('agenda-container');
+      const y=currentDate.getFullYear(), m=currentDate.getMonth();
+      const first=new Date(y,m,1);
+      const startDow=first.getDay()===0?6:first.getDay()-1; // lun=0
+      const startDate=new Date(first); startDate.setDate(1-startDow);
+      let html='<div class="month-grid">';
+      DIAS_MES_HEADER.forEach(d=>html+=`<div class="month-header">${d}</div>`);
+      const hoy=new Date(); hoy.setHours(0,0,0,0);
+      for (let i=0;i<42;i++) {
+        const d=new Date(startDate); d.setDate(startDate.getDate()+i);
+        if (i>=35 && d.getMonth()!==m) break;
+        const isOther=d.getMonth()!==m;
+        const isToday=d.getTime()===hoy.getTime();
+        const isDom=d.getDay()===0;
+        const cls=['month-cell'];
+        if(isOther) cls.push('other-month');
+        if(isToday) cls.push('today');
+        if(isDom) cls.push('domingo');
+        const dayStart=new Date(d); dayStart.setHours(0,0,0,0);
+        const dayEnd=new Date(d); dayEnd.setHours(23,59,59,999);
+        const tt=turnosInRange(dayStart,dayEnd);
+        const maxShow=3;
+        html+=`<div class="${cls.join(' ')}" data-date="${d.toISOString().slice(0,10)}">`;
+        html+=`<div class="day-num">${d.getDate()}</div>`;
+        if (!isDom) {
+          tt.slice(0,maxShow).forEach(t=>html+=turnoHTML(t,true));
+          if(tt.length>maxShow) html+=`<div class="month-more">+${tt.length-maxShow} más</div>`;
+        }
+        html+='</div>';
+      }
+      html+='</div>';
+      container.innerHTML=html;
+      container.querySelectorAll('.month-cell:not(.domingo)').forEach(el=>{
+        el.addEventListener('click',(e)=>{
+          if(e.target.closest('.month-turno')) return;
+          currentDate=new Date(el.dataset.date+'T00:00:00');
+          currentView='dia';
+          updateViewTabs();
+          loadTurnos();
+        });
+      });
+      container.querySelectorAll('.month-turno').forEach(el=>{
+        el.addEventListener('click',()=>{
+          const t=turnosCache.find(x=>x.id===el.dataset.id);
+          if(t) openForm(t);
+        });
+      });
+    }
+
+    function bindSlotClicks(container) {
+      container.querySelectorAll('.hora-slot,.week-cell').forEach(el=>{
+        el.addEventListener('click',(e)=>{
+          if(e.target.closest('.slot-turno,.month-turno')) return;
+          if(el.dataset.slot) openForm(null,el.dataset.slot);
+        });
+      });
+      container.querySelectorAll('.slot-turno,.month-turno').forEach(el=>{
+        el.addEventListener('click',()=>{
+          const t=turnosCache.find(x=>x.id===el.dataset.id);
+          if(t) openForm(t);
+        });
+      });
+    }
+
+    function render() {
+      document.getElementById('fecha-label').textContent=fmtLabel();
+      if(currentView==='dia') renderDia();
+      else if(currentView==='semana') renderSemana();
+      else renderMes();
+    }
+
+    async function loadTurnos() {
+      let start,end;
+      if(currentView==='dia') {
+        start=new Date(currentDate); start.setHours(0,0,0,0);
+        end=new Date(currentDate); end.setHours(23,59,59,999);
+      } else if(currentView==='semana') {
+        start=getMonday(currentDate);
+        end=new Date(start); end.setDate(start.getDate()+6); end.setHours(23,59,59,999);
+      } else {
+        const y=currentDate.getFullYear(), m=currentDate.getMonth();
+        start=new Date(y,m,1); start.setDate(start.getDate()-7);
+        end=new Date(y,m+1,7);
+      }
+      const {data}=await supabaseClient.from('turnos')
+        .select('*,pacientes(nombre,apellido),servicios(nombre),personal(nombre,apellido)')
+        .gte('fecha_hora',start.toISOString()).lte('fecha_hora',end.toISOString())
+        .order('fecha_hora',{ascending:true});
+      turnosCache=data||[];
+      render();
+    }
+
+    function navigate(dir) {
+      if(currentView==='dia') currentDate.setDate(currentDate.getDate()+dir);
+      else if(currentView==='semana') currentDate.setDate(currentDate.getDate()+dir*7);
+      else currentDate.setMonth(currentDate.getMonth()+dir);
+      loadTurnos();
+    }
+
+    function updateViewTabs() {
+      document.querySelectorAll('.view-tabs button').forEach(b=>{
+        b.classList.toggle('active',b.dataset.view===currentView);
+      });
+    }
+
+    function openForm(turno,slotDateTime) {
+      const card=document.getElementById('form-card'); card.style.display='block';
+      if(turno) {
+        document.getElementById('turno-id').value=turno.id;
+        document.getElementById('paciente_id').value=turno.paciente_id??'';
+        document.getElementById('servicio_id').value=turno.servicio_id??'';
+        document.getElementById('personal_id').value=turno.personal_id??'';
+        document.getElementById('fecha_hora').value=turno.fecha_hora?turno.fecha_hora.slice(0,16):'';
+        document.getElementById('duracion_min').value=turno.duracion_min??60;
+        document.getElementById('estado').value=turno.estado??'pendiente';
+        document.getElementById('notas').value=turno.notas??'';
+        document.getElementById('form-title').textContent='Editar turno';
+        document.getElementById('submit-btn').textContent='Actualizar';
+        document.getElementById('delete-btn').style.display='inline-block';
+      } else {
+        ['turno-id','paciente_id','servicio_id','personal_id','notas'].forEach(f=>{const el=document.getElementById(f);if(el)el.value='';});
+        document.getElementById('fecha_hora').value=slotDateTime||'';
+        document.getElementById('duracion_min').value=60;
+        document.getElementById('estado').value='pendiente';
+        document.getElementById('form-title').textContent='Nuevo turno';
+        document.getElementById('submit-btn').textContent='Guardar turno';
+        document.getElementById('delete-btn').style.display='none';
+      }
+      document.getElementById('form-error').textContent='';
+      window.scrollTo({top:0,behavior:'smooth'});
+    }
+
+    function closeForm(){document.getElementById('form-card').style.display='none';}
+
+    // Events
+    document.getElementById('prev-btn').addEventListener('click',()=>navigate(-1));
+    document.getElementById('next-btn').addEventListener('click',()=>navigate(1));
+    document.getElementById('btn-hoy').addEventListener('click',()=>{currentDate=new Date();currentDate.setHours(0,0,0,0);loadTurnos();});
+    document.getElementById('btn-nuevo').addEventListener('click',()=>openForm(null));
+    document.getElementById('cancel-btn').addEventListener('click',closeForm);
+    document.getElementById('delete-btn').addEventListener('click',async()=>{
+      const id=document.getElementById('turno-id').value;
+      if(!id||!confirm('¿Eliminar este turno?'))return;
+      await supabaseClient.from('turnos').delete().eq('id',id);
+      closeForm(); await loadTurnos();
+    });
+    document.querySelectorAll('.view-tabs button').forEach(b=>{
+      b.addEventListener('click',()=>{currentView=b.dataset.view;updateViewTabs();loadTurnos();});
+    });
+
+    document.getElementById('turno-form').addEventListener('submit',async(e)=>{
+      e.preventDefault();
+      const id=document.getElementById('turno-id').value;
+      const payload={
+        paciente_id:document.getElementById('paciente_id').value||null,
+        servicio_id:document.getElementById('servicio_id').value||null,
+        personal_id:document.getElementById('personal_id').value||null,
+        fecha_hora:document.getElementById('fecha_hora').value||null,
+        duracion_min:document.getElementById('duracion_min').value||60,
+        estado:document.getElementById('estado').value,
+        notas:document.getElementById('notas').value||null,
+      };
+      const {error}=id
+        ? await supabaseClient.from('turnos').update(payload).eq('id',id)
+        : await supabaseClient.from('turnos').insert(payload);
+      if(error){document.getElementById('form-error').textContent=error.message;return;}
+      closeForm(); await loadTurnos();
+    });
+
+    (async()=>{
+      const s=await initLayout('agenda'); if(!s) return;
+      const [{data:pacientes},{data:servicios},{data:personal}]=await Promise.all([
+        supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo',true).order('apellido'),
+        supabaseClient.from('servicios').select('id,nombre').eq('activo',true).order('nombre'),
+        supabaseClient.from('personal').select('id,nombre,apellido').eq('activo',true).order('apellido'),
+      ]);
+      const selPac=document.getElementById('paciente_id');
+      (pacientes||[]).forEach(p=>selPac.add(new Option(`${p.apellido}, ${p.nombre}`,p.id)));
+      const selSrv=document.getElementById('servicio_id');
+      (servicios||[]).forEach(sv=>selSrv.add(new Option(sv.nombre,sv.id)));
+      const selPer=document.getElementById('personal_id');
+      (personal||[]).forEach(p=>selPer.add(new Option(`${p.nombre} ${p.apellido}`,p.id)));
+      await loadTurnos();
+    })();
+  </script>
+</body>
+</html>

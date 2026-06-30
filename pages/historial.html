@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Historial clínico · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .paciente-header {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+    .paciente-info { flex: 1; min-width: 250px; }
+    .paciente-info h2 { margin: 0 0 0.25rem; font-size: 1.3rem; color: var(--color-primary-dark); }
+    .paciente-info .dato { display: flex; gap: 0.5rem; font-size: 0.85rem; margin-bottom: 0.3rem; }
+    .paciente-info .dato-label { color: var(--color-text-muted); min-width: 120px; }
+    .paciente-stats {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .paciente-stats .stat-card { min-width: 120px; text-align: center; }
+
+    .timeline { position: relative; padding-left: 1.5rem; }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 0.45rem;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--color-border);
+    }
+    .timeline-item {
+      position: relative;
+      margin-bottom: 1.25rem;
+      padding-left: 1rem;
+    }
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -1.1rem;
+      top: 0.35rem;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--color-primary);
+      border: 2px solid #fff;
+    }
+    .timeline-fecha { font-size: 0.78rem; color: var(--color-text-muted); margin-bottom: 0.15rem; }
+    .timeline-titulo { font-weight: 600; font-size: 0.9rem; }
+    .timeline-detalle { font-size: 0.82rem; color: var(--color-text-muted); margin-top: 0.2rem; }
+
+    .tab-bar { display: flex; gap: 0; border-bottom: 2px solid var(--color-border); margin-bottom: 1rem; }
+    .tab-bar button {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      padding: 0.6rem 1.2rem;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .tab-bar button:hover { color: var(--color-text); }
+    .tab-bar button.active { color: var(--color-primary-dark); border-bottom-color: var(--color-accent); font-weight: 600; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>Historial clínico</h1>
+        <a href="pacientes.html" class="btn btn-secondary btn-sm" style="text-decoration:none;">&larr; Volver a pacientes</a>
+      </header>
+      <div class="content">
+
+        <!-- Datos del paciente -->
+        <div class="card" id="paciente-card">
+          <div class="paciente-header">
+            <img src="../assets/img/logo.png" alt="AIVIMED" style="width:70px;border-radius:8px;object-fit:contain;flex-shrink:0;" onerror="this.style.display='none'" />
+            <div class="paciente-info" id="paciente-info">Cargando...</div>
+            <div class="paciente-stats" id="paciente-stats"></div>
+          </div>
+        </div>
+
+        <!-- Antecedentes -->
+        <div class="card" style="margin-top:1rem;" id="antecedentes-card" hidden>
+          <h3 style="margin-top:0;color:var(--color-primary-dark);">Antecedentes / Alergias / Medicación</h3>
+          <p id="antecedentes-text" style="margin:0;white-space:pre-wrap;"></p>
+        </div>
+
+        <!-- Tabs -->
+        <div class="card" style="margin-top:1rem;">
+          <div class="tab-bar">
+            <button class="active" data-tab="sesiones">Sesiones</button>
+            <button data-tab="turnos">Turnos</button>
+            <button data-tab="pagos">Pagos</button>
+          </div>
+
+          <!-- Tab: Sesiones -->
+          <div class="tab-content active" id="tab-sesiones">
+            <div class="timeline" id="sesiones-timeline">
+              <p style="color:var(--color-text-muted);">Cargando sesiones...</p>
+            </div>
+          </div>
+
+          <!-- Tab: Turnos -->
+          <div class="tab-content" id="tab-turnos">
+            <table>
+              <thead>
+                <tr><th>Fecha</th><th>Servicio</th><th>Profesional</th><th>Estado</th><th>Notas</th></tr>
+              </thead>
+              <tbody id="turnos-body"><tr><td colspan="5">Cargando...</td></tr></tbody>
+            </table>
+          </div>
+
+          <!-- Tab: Pagos -->
+          <div class="tab-content" id="tab-pagos">
+            <div id="pagos-total" style="font-weight:700;font-size:1rem;margin-bottom:0.75rem;color:var(--color-accent);"></div>
+            <table>
+              <thead>
+                <tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Notas</th></tr>
+              </thead>
+              <tbody id="pagos-body"><tr><td colspan="4">Cargando...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    const METODOS = { efectivo:'Efectivo', tarjeta_debito:'Débito', tarjeta_credito:'Crédito', transferencia:'Transferencia', otro:'Otro' };
+
+    const pacienteId = new URLSearchParams(window.location.search).get('id');
+    if (!pacienteId) { window.location.href = 'pacientes.html'; }
+
+    // Tabs
+    document.querySelectorAll('.tab-bar button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-bar button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    function dato(label, valor) {
+      if (!valor) return '';
+      return `<div class="dato"><span class="dato-label">${label}</span><span>${valor}</span></div>`;
+    }
+
+    function edad(fechaNac) {
+      if (!fechaNac) return null;
+      const hoy = new Date();
+      const nac = new Date(fechaNac);
+      let edad = hoy.getFullYear() - nac.getFullYear();
+      if (hoy.getMonth() < nac.getMonth() || (hoy.getMonth() === nac.getMonth() && hoy.getDate() < nac.getDate())) edad--;
+      return edad + ' años';
+    }
+
+    (async () => {
+      const session = await initLayout('pacientes');
+      if (!session) return;
+
+      // Datos del paciente
+      const { data: pac } = await supabaseClient.from('pacientes').select('*').eq('id', pacienteId).single();
+      if (!pac) { document.getElementById('paciente-info').textContent = 'Paciente no encontrado.'; return; }
+
+      document.title = `${pac.nombre} ${pac.apellido} — Historial · AIVIMED`;
+
+      document.getElementById('paciente-info').innerHTML = `
+        <h2>${pac.nombre} ${pac.apellido}</h2>
+        ${dato('RUT', pac.dni)}
+        ${dato('Edad', edad(pac.fecha_nacimiento))}
+        ${dato('Teléfono', pac.telefono)}
+        ${dato('Email', pac.email)}
+        ${dato('Dirección', pac.direccion)}
+        ${dato('Emergencia', pac.contacto_emergencia_nombre ? `${pac.contacto_emergencia_nombre} (${pac.contacto_emergencia_telefono || '–'})` : null)}
+      `;
+
+      if (pac.antecedentes) {
+        document.getElementById('antecedentes-card').hidden = false;
+        document.getElementById('antecedentes-text').textContent = pac.antecedentes;
+      }
+
+      // Cargar todo en paralelo
+      const [
+        { data: sesiones },
+        { data: turnos },
+        { data: pagos },
+      ] = await Promise.all([
+        supabaseClient.from('sesiones')
+          .select('*, servicios(nombre), personal(nombre,apellido)')
+          .eq('paciente_id', pacienteId)
+          .order('fecha', { ascending: false }),
+        supabaseClient.from('turnos')
+          .select('*, servicios(nombre), personal(nombre,apellido)')
+          .eq('paciente_id', pacienteId)
+          .order('fecha_hora', { ascending: false }),
+        supabaseClient.from('pagos')
+          .select('*')
+          .eq('paciente_id', pacienteId)
+          .order('fecha', { ascending: false }),
+      ]);
+
+      // Stats
+      const totalPagado = (pagos||[]).reduce((s, p) => s + Number(p.monto||0), 0);
+      document.getElementById('paciente-stats').innerHTML = `
+        <div class="card stat-card"><div class="stat-value">${(sesiones||[]).length}</div><div class="stat-label">Sesiones</div></div>
+        <div class="card stat-card"><div class="stat-value">${(turnos||[]).length}</div><div class="stat-label">Turnos</div></div>
+        <div class="card stat-card"><div class="stat-value">${fmtMoneda(totalPagado)}</div><div class="stat-label">Total pagado</div></div>
+      `;
+
+      // Timeline de sesiones
+      const timeline = document.getElementById('sesiones-timeline');
+      if (!sesiones?.length) {
+        timeline.innerHTML = '<p style="color:var(--color-text-muted);">Sin sesiones registradas.</p>';
+      } else {
+        timeline.innerHTML = sesiones.map(s => {
+          const profesional = s.personal ? `${s.personal.nombre} ${s.personal.apellido}` : '';
+          return `<div class="timeline-item">
+            <div class="timeline-fecha">${fmtFechaHora(s.fecha)}${profesional ? ' — ' + profesional : ''}</div>
+            <div class="timeline-titulo">${s.servicios?.nombre ?? 'Sesión sin servicio'}</div>
+            ${s.detalle ? `<div class="timeline-detalle">${s.detalle}</div>` : ''}
+            ${s.observaciones ? `<div class="timeline-detalle" style="margin-top:0.15rem;"><em>Obs: ${s.observaciones}</em></div>` : ''}
+          </div>`;
+        }).join('');
+      }
+
+      // Tabla de turnos
+      const turnosBody = document.getElementById('turnos-body');
+      if (!turnos?.length) {
+        turnosBody.innerHTML = '<tr><td colspan="5">Sin turnos.</td></tr>';
+      } else {
+        turnosBody.innerHTML = turnos.map(t => `<tr>
+          <td>${fmtFechaHora(t.fecha_hora)}</td>
+          <td>${t.servicios?.nombre ?? '–'}</td>
+          <td>${t.personal ? `${t.personal.nombre} ${t.personal.apellido}` : '–'}</td>
+          <td>${badgeEstado(t.estado, ESTADOS_TURNO)}</td>
+          <td>${t.notas ?? '–'}</td>
+        </tr>`).join('');
+      }
+
+      // Tabla de pagos
+      const pagosBody = document.getElementById('pagos-body');
+      document.getElementById('pagos-total').textContent = (pagos||[]).length ? `Total pagado: ${fmtMoneda(totalPagado)}` : '';
+      if (!pagos?.length) {
+        pagosBody.innerHTML = '<tr><td colspan="4">Sin pagos.</td></tr>';
+      } else {
+        pagosBody.innerHTML = pagos.map(p => `<tr>
+          <td>${fmtFechaHora(p.fecha)}</td>
+          <td style="font-weight:600;">${fmtMoneda(p.monto)}</td>
+          <td>${METODOS[p.metodo_pago] ?? p.metodo_pago ?? '–'}</td>
+          <td>${p.notas ?? '–'}</td>
+        </tr>`).join('');
+      }
+    })();
+  </script>
+</body>
+</html>

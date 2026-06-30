@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Consentimientos · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .firma-canvas-wrap {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      background: #fff;
+      position: relative;
+      margin-top: 0.25rem;
+    }
+    .firma-canvas-wrap canvas {
+      display: block;
+      width: 100%;
+      height: 150px;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    .firma-placeholder {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: var(--color-text-muted);
+      font-size: 0.82rem;
+      pointer-events: none;
+    }
+    .consent-preview {
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .consent-preview h3 { margin-top: 0; color: var(--color-primary-dark); }
+    .firma-img { max-width: 200px; border: 1px solid var(--color-border); border-radius: 4px; background: #fff; }
+
+    .print-area { display: none; }
+    @media print {
+      body * { visibility: hidden; }
+      .print-area, .print-area * { visibility: visible; }
+      .print-area { display: block; position: absolute; left: 0; top: 0; width: 100%; padding: 2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Consentimientos informados</h1></header>
+      <div class="content">
+
+        <!-- Formulario -->
+        <div class="card" id="form-card">
+          <h2 id="form-title" style="margin-top:0;">Nuevo consentimiento</h2>
+          <form id="consent-form">
+            <input type="hidden" id="consent-id" />
+            <div class="form-row">
+              <div class="form-group">
+                <label>Paciente *</label>
+                <select id="paciente_id" required><option value="">Seleccionar…</option></select>
+              </div>
+              <div class="form-group">
+                <label>Servicio / Procedimiento *</label>
+                <select id="servicio_id" required><option value="">Seleccionar…</option></select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Nombre del firmante</label>
+                <input id="nombre_firmante" placeholder="Nombre completo de quien firma" />
+              </div>
+              <div class="form-group">
+                <label>RUT del firmante</label>
+                <input id="rut_firmante" placeholder="12.345.678-9" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Texto del consentimiento</label>
+              <div class="consent-preview" id="consent-preview">
+                <p style="color:var(--color-text-muted);margin:0;">Seleccioná un servicio para generar el texto del consentimiento.</p>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Firma del paciente</label>
+              <div class="firma-canvas-wrap">
+                <canvas id="firma-canvas"></canvas>
+                <div class="firma-placeholder" id="firma-placeholder">Firmar aquí con el mouse o dedo</div>
+              </div>
+              <button type="button" id="limpiar-firma" class="btn-secondary btn-sm" style="margin-top:0.35rem;">Limpiar firma</button>
+            </div>
+
+            <button type="submit" id="submit-btn">Guardar consentimiento firmado</button>
+            <button type="button" id="cancel-btn" class="btn-secondary" style="display:none;">Cancelar</button>
+            <p class="error-message" id="form-error"></p>
+          </form>
+        </div>
+
+        <!-- Listado -->
+        <div class="card" style="margin-top:1rem;">
+          <div class="toolbar">
+            <h2 style="margin:0;">Consentimientos registrados</h2>
+            <select id="filter-paciente" style="max-width:250px;">
+              <option value="">Todos los pacientes</option>
+            </select>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Fecha</th><th>Paciente</th><th>Servicio</th><th>Firmante</th><th>Estado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody id="consents-body"><tr><td colspan="6">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Área de impresión -->
+  <div class="print-area" id="print-area"></div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    let consentsCache = [];
+    let serviciosCache = [];
+
+    // ─── Textos de consentimiento por servicio ───
+    function generarTexto(servicio, paciente) {
+      const nombre = paciente ? `${paciente.nombre} ${paciente.apellido}` : '________________';
+      const rut = paciente?.dni || '________________';
+      return `<h3 style="text-align:center;">CONSENTIMIENTO INFORMADO</h3>
+<p style="text-align:center;"><strong>AIVIMED — Salud Integral</strong></p>
+<p style="text-align:center;">Procedimiento: <strong>${servicio || '________________'}</strong></p>
+<hr/>
+<p>Yo, <strong>${nombre}</strong>, RUT <strong>${rut}</strong>, en pleno uso de mis facultades mentales y de manera voluntaria, declaro que:</p>
+<ol>
+<li>He sido informado/a sobre el procedimiento de <strong>${servicio || '________________'}</strong>, incluyendo su naturaleza, objetivos, beneficios esperados, riesgos posibles, alternativas y contraindicaciones.</li>
+<li>He tenido la oportunidad de realizar todas las preguntas que consideré necesarias, las cuales han sido respondidas a mi satisfacción por el profesional tratante.</li>
+<li>Comprendo que los resultados pueden variar según las características individuales de cada paciente y que no se garantizan resultados específicos.</li>
+<li>Conozco los posibles efectos secundarios, que pueden incluir: enrojecimiento, inflamación, hematomas, dolor leve, sensibilidad temporal en la zona tratada u otros propios del procedimiento.</li>
+<li>Me comprometo a seguir las indicaciones pre y post procedimiento entregadas por el profesional.</li>
+<li>Declaro no haber omitido información relevante sobre mi estado de salud, alergias, medicamentos en uso, embarazo o cualquier condición que pueda afectar el procedimiento.</li>
+</ol>
+<p>En consecuencia, <strong>autorizo</strong> la realización del procedimiento mencionado, aceptando los riesgos inherentes al mismo.</p>
+<p style="margin-top:2rem;">Fecha: ${new Date().toLocaleDateString('es-CL')}</p>`;
+    }
+
+    // ─── Canvas de firma ───
+    const canvas = document.getElementById('firma-canvas');
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    let hasSignature = false;
+
+    function resizeCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = 150;
+      ctx.strokeStyle = '#1a2320';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+    }
+
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches ? e.touches[0] : e;
+      return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+    }
+
+    canvas.addEventListener('mousedown', (e) => { drawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); });
+    canvas.addEventListener('mousemove', (e) => { if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); hasSignature = true; document.getElementById('firma-placeholder').style.display = 'none'; });
+    canvas.addEventListener('mouseup', () => drawing = false);
+    canvas.addEventListener('mouseleave', () => drawing = false);
+
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); drawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); });
+    canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (!drawing) return; const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); hasSignature = true; document.getElementById('firma-placeholder').style.display = 'none'; });
+    canvas.addEventListener('touchend', () => drawing = false);
+
+    document.getElementById('limpiar-firma').addEventListener('click', () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasSignature = false;
+      document.getElementById('firma-placeholder').style.display = 'block';
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+    setTimeout(resizeCanvas, 100);
+
+    // ─── Generar preview al seleccionar servicio/paciente ───
+    async function updatePreview() {
+      const srvId = document.getElementById('servicio_id').value;
+      const pacId = document.getElementById('paciente_id').value;
+      const srv = serviciosCache.find(s => s.id === srvId);
+      let pac = null;
+      if (pacId) {
+        const { data } = await supabaseClient.from('pacientes').select('nombre,apellido,dni').eq('id', pacId).single();
+        pac = data;
+        if (pac && !document.getElementById('nombre_firmante').value) {
+          document.getElementById('nombre_firmante').value = `${pac.nombre} ${pac.apellido}`;
+          document.getElementById('rut_firmante').value = pac.dni || '';
+        }
+      }
+      if (srv) {
+        document.getElementById('consent-preview').innerHTML = generarTexto(srv.nombre, pac);
+      }
+    }
+
+    document.getElementById('servicio_id').addEventListener('change', updatePreview);
+    document.getElementById('paciente_id').addEventListener('change', updatePreview);
+
+    // ─── Render listado ───
+    function renderConsents(list) {
+      const tbody = document.getElementById('consents-body');
+      if (!list.length) { tbody.innerHTML = '<tr><td colspan="6">Sin consentimientos registrados.</td></tr>'; return; }
+      tbody.innerHTML = list.map(c => `<tr>
+        <td>${fmtFechaHora(c.fecha)}</td>
+        <td>${c.pacientes ? `${c.pacientes.nombre} ${c.pacientes.apellido}` : '–'}</td>
+        <td>${c.servicios?.nombre ?? '–'}</td>
+        <td>${c.nombre_firmante || '–'}</td>
+        <td>${c.firmado ? '<span class="badge badge-green">Firmado</span>' : '<span class="badge badge-yellow">Pendiente</span>'}</td>
+        <td>
+          <button class="btn-secondary btn-sm print-btn" data-id="${c.id}">Imprimir</button>
+          <button class="btn-danger btn-sm del-btn" data-id="${c.id}">Eliminar</button>
+        </td>
+      </tr>`).join('');
+
+      tbody.querySelectorAll('.print-btn').forEach(b => b.addEventListener('click', () => printConsent(b.dataset.id)));
+      tbody.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('¿Eliminar este consentimiento?')) return;
+        await supabaseClient.from('consentimientos').delete().eq('id', b.dataset.id);
+        await load();
+      }));
+    }
+
+    function printConsent(id) {
+      const c = consentsCache.find(x => x.id === id);
+      if (!c) return;
+      const printArea = document.getElementById('print-area');
+      printArea.innerHTML = `
+        <div style="text-align:center;margin-bottom:1rem;">
+          <img src="../assets/img/logo.png" alt="AIVIMED" style="width:80px;border-radius:6px;" onerror="this.style.display='none'" />
+        </div>
+        ${c.texto_consentimiento}
+        ${c.firma_data ? `<div style="margin-top:1.5rem;"><p><strong>Firma:</strong></p><img src="${c.firma_data}" style="max-width:250px;border:1px solid #ccc;border-radius:4px;" /></div>` : ''}
+        <p style="margin-top:0.5rem;"><strong>Firmante:</strong> ${c.nombre_firmante || '–'} — RUT: ${c.rut_firmante || '–'}</p>
+      `;
+      window.print();
+    }
+
+    async function load() {
+      const pacId = document.getElementById('filter-paciente').value;
+      let q = supabaseClient.from('consentimientos')
+        .select('*, pacientes(nombre,apellido), servicios(nombre)')
+        .order('fecha', { ascending: false }).limit(100);
+      if (pacId) q = q.eq('paciente_id', pacId);
+      const { data } = await q;
+      consentsCache = data || [];
+      renderConsents(consentsCache);
+    }
+
+    document.getElementById('filter-paciente').addEventListener('change', load);
+
+    function clearForm() {
+      ['consent-id', 'paciente_id', 'servicio_id', 'nombre_firmante', 'rut_firmante'].forEach(f => { const el = document.getElementById(f); if (el) el.value = ''; });
+      document.getElementById('consent-preview').innerHTML = '<p style="color:var(--color-text-muted);margin:0;">Seleccioná un servicio para generar el texto del consentimiento.</p>';
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasSignature = false;
+      document.getElementById('firma-placeholder').style.display = 'block';
+      document.getElementById('form-title').textContent = 'Nuevo consentimiento';
+      document.getElementById('cancel-btn').style.display = 'none';
+      document.getElementById('form-error').textContent = '';
+    }
+
+    document.getElementById('cancel-btn').addEventListener('click', clearForm);
+
+    document.getElementById('consent-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById('form-error');
+      errorEl.textContent = '';
+
+      const pacienteId = document.getElementById('paciente_id').value;
+      const servicioId = document.getElementById('servicio_id').value;
+      if (!pacienteId || !servicioId) { errorEl.textContent = 'Seleccioná paciente y servicio.'; return; }
+      if (!hasSignature) { errorEl.textContent = 'El paciente debe firmar antes de guardar.'; return; }
+
+      const firmaData = canvas.toDataURL('image/png');
+      const textoConsentimiento = document.getElementById('consent-preview').innerHTML;
+
+      const payload = {
+        paciente_id: pacienteId,
+        servicio_id: servicioId,
+        texto_consentimiento: textoConsentimiento,
+        firma_data: firmaData,
+        firmado: true,
+        nombre_firmante: document.getElementById('nombre_firmante').value || null,
+        rut_firmante: document.getElementById('rut_firmante').value || null,
+      };
+
+      const { error } = await supabaseClient.from('consentimientos').insert(payload);
+      if (error) { errorEl.textContent = error.message; return; }
+      clearForm();
+      await load();
+    });
+
+    (async () => {
+      const s = await initLayout('consentimientos');
+      if (!s) return;
+
+      const [{ data: pacientes }, { data: servicios }] = await Promise.all([
+        supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo', true).order('apellido'),
+        supabaseClient.from('servicios').select('id,nombre,requiere_consentimiento').eq('activo', true).order('nombre'),
+      ]);
+
+      serviciosCache = servicios || [];
+
+      const selPac = document.getElementById('paciente_id');
+      const filterPac = document.getElementById('filter-paciente');
+      (pacientes || []).forEach(p => {
+        const label = `${p.apellido}, ${p.nombre}`;
+        selPac.add(new Option(label, p.id));
+        filterPac.add(new Option(label, p.id));
+      });
+
+      // Solo mostrar servicios que requieren consentimiento primero, luego el resto
+      const selSrv = document.getElementById('servicio_id');
+      const conReq = serviciosCache.filter(s => s.requiere_consentimiento);
+      const sinReq = serviciosCache.filter(s => !s.requiere_consentimiento);
+      if (conReq.length) {
+        const g1 = document.createElement('optgroup');
+        g1.label = 'Requieren consentimiento';
+        conReq.forEach(sv => g1.add(new Option(sv.nombre, sv.id)));
+        selSrv.add(g1);
+      }
+      if (sinReq.length) {
+        const g2 = document.createElement('optgroup');
+        g2.label = 'Otros servicios';
+        sinReq.forEach(sv => g2.add(new Option(sv.nombre, sv.id)));
+        selSrv.add(g2);
+      }
+
+      resizeCanvas();
+      await load();
+    })();
+  </script>
+</body>
+</html>

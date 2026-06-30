@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inicio · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Inicio</h1></header>
+      <div class="content">
+
+        <div class="card" style="display:flex;align-items:center;gap:1.25rem;margin-bottom:1.5rem;background:linear-gradient(135deg,var(--color-primary-dark),#1a4a3a);color:#fff;padding:1.5rem 1.75rem;">
+          <img src="../assets/img/logo.png" alt="AIVIMED" style="width:72px;border-radius:10px;object-fit:contain;" onerror="this.style.display='none'" />
+          <div>
+            <strong style="font-family:'Cinzel Decorative',serif;font-style:normal;font-size:1.6rem;letter-spacing:0.05em;color:var(--color-accent);">AIVIMED</strong>
+            <br><span style="font-size:0.85rem;opacity:0.8;letter-spacing:0.08em;">Salud Integral — Panel de inicio</span>
+          </div>
+        </div>
+
+        <div class="cards-grid">
+          <div class="card stat-card">
+            <div class="stat-value" id="stat-turnos-hoy">–</div>
+            <div class="stat-label">Turnos de hoy</div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-value" id="stat-pacientes">–</div>
+            <div class="stat-label">Pacientes activos</div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-value" id="stat-stock-bajo">–</div>
+            <div class="stat-label">Insumos con stock bajo</div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-value" id="stat-ingresos-mes">–</div>
+            <div class="stat-label">Ingresos del mes</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="toolbar">
+            <h2 style="margin:0;">Turnos de hoy</h2>
+            <a href="agenda.html" class="btn btn-secondary btn-sm" style="text-decoration:none;">Ver agenda completa</a>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Hora</th><th>Paciente</th><th>Servicio</th><th>Profesional</th><th>Estado</th></tr>
+            </thead>
+            <tbody id="turnos-hoy-body">
+              <tr><td colspan="5">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:1rem;">
+          <h2 style="margin-top:0;">Insumos con stock bajo</h2>
+          <table>
+            <thead>
+              <tr><th>Insumo</th><th>Unidad</th><th>Stock actual</th><th>Mínimo</th></tr>
+            </thead>
+            <tbody id="stock-bajo-body">
+              <tr><td colspan="4">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    (async () => {
+      const session = await initLayout('dashboard');
+      if (!session) return;
+
+      const ahora = new Date();
+      const diaInicio = new Date(ahora); diaInicio.setHours(0,0,0,0);
+      const diaFin   = new Date(ahora); diaFin.setHours(23,59,59,999);
+      const mesInicio = new Date(ahora.getFullYear(), ahora.getMonth(), 1);
+
+      // Turnos hoy
+      const { count: turnosHoy } = await supabaseClient
+        .from('turnos').select('*', { count:'exact', head:true })
+        .gte('fecha_hora', diaInicio.toISOString())
+        .lte('fecha_hora', diaFin.toISOString());
+      document.getElementById('stat-turnos-hoy').textContent = turnosHoy ?? 0;
+
+      // Pacientes activos
+      const { count: pacientesCount } = await supabaseClient
+        .from('pacientes').select('*', { count:'exact', head:true }).eq('activo', true);
+      document.getElementById('stat-pacientes').textContent = pacientesCount ?? 0;
+
+      // Insumos bajo mínimo
+      const { data: insumos } = await supabaseClient.from('insumos').select('stock_actual,stock_minimo').eq('activo',true);
+      const stockBajo = (insumos||[]).filter(i => Number(i.stock_actual) <= Number(i.stock_minimo));
+      document.getElementById('stat-stock-bajo').textContent = stockBajo.length;
+
+      // Ingresos mes
+      const { data: pagosMes } = await supabaseClient.from('pagos').select('monto').gte('fecha', mesInicio.toISOString());
+      const totalMes = (pagosMes||[]).reduce((s,p) => s + Number(p.monto||0), 0);
+      document.getElementById('stat-ingresos-mes').textContent = fmtMoneda(totalMes);
+
+      // Tabla turnos hoy
+      const { data: turnos } = await supabaseClient
+        .from('turnos')
+        .select('fecha_hora, estado, pacientes(nombre,apellido), servicios(nombre), personal(nombre,apellido)')
+        .gte('fecha_hora', diaInicio.toISOString())
+        .lte('fecha_hora', diaFin.toISOString())
+        .order('fecha_hora', { ascending: true });
+
+      const tbody = document.getElementById('turnos-hoy-body');
+      if (!turnos?.length) {
+        tbody.innerHTML = '<tr><td colspan="5">No hay turnos para hoy.</td></tr>';
+      } else {
+        tbody.innerHTML = turnos.map(t => `<tr>
+          <td>${new Date(t.fecha_hora).toLocaleTimeString('es-AR', {timeStyle:'short'})}</td>
+          <td>${t.pacientes ? `${t.pacientes.nombre} ${t.pacientes.apellido}` : '–'}</td>
+          <td>${t.servicios?.nombre ?? '–'}</td>
+          <td>${t.personal ? `${t.personal.nombre} ${t.personal.apellido}` : '–'}</td>
+          <td>${badgeEstado(t.estado, ESTADOS_TURNO)}</td>
+        </tr>`).join('');
+      }
+
+      // Tabla stock bajo
+      const tbody2 = document.getElementById('stock-bajo-body');
+      if (!stockBajo.length) {
+        tbody2.innerHTML = '<tr><td colspan="4">Todos los insumos tienen stock suficiente.</td></tr>';
+      } else {
+        const { data: insSub } = await supabaseClient
+          .from('insumos').select('nombre,unidad,stock_actual,stock_minimo')
+          .eq('activo',true).lte('stock_actual', supabaseClient.rpc ? undefined : 9999999);
+        // fallback: use already-loaded data
+        const bajos = (insumos||[]).filter(i => Number(i.stock_actual) <= Number(i.stock_minimo));
+        const { data: insDetalle } = await supabaseClient
+          .from('insumos').select('nombre,unidad,stock_actual,stock_minimo').eq('activo',true);
+        const bajosDetalle = (insDetalle||[]).filter(i => Number(i.stock_actual) <= Number(i.stock_minimo));
+        tbody2.innerHTML = bajosDetalle.map(i => `<tr>
+          <td>${i.nombre}</td>
+          <td>${i.unidad}</td>
+          <td style="color:var(--color-danger);font-weight:600;">${i.stock_actual}</td>
+          <td>${i.stock_minimo}</td>
+        </tr>`).join('');
+      }
+    })();
+  </script>
+</body>
+</html>

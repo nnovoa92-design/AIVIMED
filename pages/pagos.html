@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pagos · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Pagos</h1></header>
+      <div class="content">
+
+        <div class="card">
+          <h2 style="margin-top:0;">Registrar pago</h2>
+          <form id="pago-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Paciente *</label>
+                <select id="paciente_id" required><option value="">Seleccionar…</option></select>
+              </div>
+              <div class="form-group">
+                <label>Monto *</label>
+                <input type="number" id="monto" min="0" step="0.01" required />
+              </div>
+              <div class="form-group">
+                <label>Método de pago</label>
+                <select id="metodo_pago">
+                  <option value="efectivo">Efectivo</option>
+                  <option value="tarjeta_debito">Tarjeta débito</option>
+                  <option value="tarjeta_credito">Tarjeta crédito</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Fecha</label>
+                <input type="datetime-local" id="fecha" />
+              </div>
+            </div>
+            <div class="form-group"><label>Notas</label><input id="notas" placeholder="Concepto, referencia…" /></div>
+            <button type="submit">Registrar pago</button>
+            <p class="error-message" id="form-error"></p>
+          </form>
+        </div>
+
+        <div class="card" style="margin-top:1rem;">
+          <div class="toolbar">
+            <h2 style="margin:0;">Historial de pagos</h2>
+            <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+              <select id="filter-paciente" style="max-width:220px;"><option value="">Todos los pacientes</option></select>
+              <input type="month" id="filter-mes" />
+            </div>
+          </div>
+          <div id="total-banner" style="margin-bottom:0.75rem;font-weight:700;font-size:1.05rem;color:var(--color-primary-dark);"></div>
+          <table>
+            <thead>
+              <tr><th>Fecha</th><th>Paciente</th><th>Monto</th><th>Método</th><th>Notas</th><th>Acciones</th></tr>
+            </thead>
+            <tbody id="pagos-body"><tr><td colspan="6">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    const METODOS = { efectivo:'Efectivo', tarjeta_debito:'Débito', tarjeta_credito:'Crédito', transferencia:'Transferencia', otro:'Otro' };
+    let pagosCache = [];
+
+    const renderPagos = (list) => {
+      const tbody = document.getElementById('pagos-body');
+      const total = list.reduce((s, p) => s + Number(p.monto||0), 0);
+      document.getElementById('total-banner').textContent = list.length ? `Total: ${fmtMoneda(total)}` : '';
+      if (!list.length) { tbody.innerHTML = '<tr><td colspan="6">Sin pagos.</td></tr>'; return; }
+      tbody.innerHTML = list.map(p => `<tr>
+        <td>${fmtFechaHora(p.fecha)}</td>
+        <td>${p.pacientes ? `${p.pacientes.nombre} ${p.pacientes.apellido}` : '–'}</td>
+        <td style="font-weight:600;">${fmtMoneda(p.monto)}</td>
+        <td>${METODOS[p.metodo_pago] ?? p.metodo_pago ?? '–'}</td>
+        <td>${p.notas ?? '–'}</td>
+        <td><button class="btn-danger btn-sm del-btn" data-id="${p.id}">Eliminar</button></td>
+      </tr>`).join('');
+      tbody.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('¿Eliminar este pago?')) return;
+        await supabaseClient.from('pagos').delete().eq('id', b.dataset.id);
+        await load();
+      }));
+    };
+
+    const load = async () => {
+      const pacId = document.getElementById('filter-paciente').value;
+      const mes   = document.getElementById('filter-mes').value;
+      let q = supabaseClient.from('pagos')
+        .select('*, pacientes(nombre,apellido)')
+        .order('fecha', { ascending: false })
+        .limit(200);
+      if (pacId) q = q.eq('paciente_id', pacId);
+      if (mes) {
+        const [y, m] = mes.split('-');
+        q = q.gte('fecha', `${y}-${m}-01`).lt('fecha', `${y}-${String(Number(m)+1).padStart(2,'0')}-01`);
+      }
+      const { data } = await q;
+      pagosCache = data || [];
+      renderPagos(pagosCache);
+    };
+
+    document.getElementById('filter-paciente').addEventListener('change', load);
+    document.getElementById('filter-mes').addEventListener('change', load);
+
+    document.getElementById('pago-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        paciente_id: document.getElementById('paciente_id').value || null,
+        monto: document.getElementById('monto').value,
+        metodo_pago: document.getElementById('metodo_pago').value,
+        fecha: document.getElementById('fecha').value || new Date().toISOString(),
+        notas: document.getElementById('notas').value || null,
+      };
+      const { error } = await supabaseClient.from('pagos').insert(payload);
+      if (error) { document.getElementById('form-error').textContent = error.message; return; }
+      document.getElementById('monto').value = '';
+      document.getElementById('notas').value = '';
+      await load();
+    });
+
+    (async () => {
+      const s = await initLayout('pagos');
+      if (!s) return;
+
+      const { data: pacientes } = await supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo',true).order('apellido');
+      const selPac = document.getElementById('paciente_id');
+      const filterPac = document.getElementById('filter-paciente');
+      (pacientes||[]).forEach(p => {
+        const label = `${p.apellido}, ${p.nombre}`;
+        selPac.add(new Option(label, p.id));
+        filterPac.add(new Option(label, p.id));
+      });
+
+      const now = new Date(); now.setSeconds(0,0);
+      document.getElementById('fecha').value = now.toISOString().slice(0,16);
+      document.getElementById('filter-mes').value = now.toISOString().slice(0,7);
+
+      await load();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Servicios · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Catálogo de servicios</h1></header>
+      <div class="content">
+
+        <div class="card">
+          <h2 style="margin-top:0;">Categorías</h2>
+          <form id="cat-form" class="form-row" style="align-items:flex-end;">
+            <div class="form-group" style="flex:1;">
+              <label>Nueva categoría</label>
+              <input id="cat-nombre" placeholder="Ej: Estética facial" required />
+            </div>
+            <div class="form-group" style="flex:0;">
+              <button type="submit">Agregar</button>
+            </div>
+          </form>
+          <div id="cats-list" style="margin-top:0.5rem;"></div>
+        </div>
+
+        <div class="card" style="margin-top:1rem;">
+          <h2 id="form-title" style="margin-top:0;">Nuevo servicio</h2>
+          <form id="servicio-form">
+            <input type="hidden" id="servicio-id" />
+            <div class="form-row">
+              <div class="form-group"><label>Nombre *</label><input id="nombre" required /></div>
+              <div class="form-group"><label>Categoría</label><select id="categoria_id"></select></div>
+              <div class="form-group"><label>Duración (min)</label><input type="number" id="duracion_min" min="0" /></div>
+              <div class="form-group"><label>Precio ($)</label><input type="number" id="precio" min="0" step="0.01" /></div>
+            </div>
+            <div class="form-group"><label>Descripción</label><textarea id="descripcion" rows="2"></textarea></div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
+                <input type="checkbox" id="requiere_consentimiento" style="width:auto;" />
+                Requiere consentimiento informado
+              </label>
+            </div>
+            <button type="submit" id="submit-btn">Guardar servicio</button>
+            <button type="button" id="cancel-btn" class="btn-secondary" style="display:none;">Cancelar</button>
+            <p class="error-message" id="form-error"></p>
+          </form>
+        </div>
+
+        <div class="card" style="margin-top:1rem;">
+          <div class="toolbar">
+            <h2 style="margin:0;">Servicios</h2>
+            <select id="filter-cat" style="max-width:250px;">
+              <option value="">Todas las categorías</option>
+            </select>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Nombre</th><th>Categoría</th><th>Duración</th><th>Precio</th><th>Consent.</th><th>Acciones</th></tr>
+            </thead>
+            <tbody id="servicios-body"><tr><td colspan="6">Cargando...</td></tr></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    let cats = [], servicios = [];
+
+    const populateCatSelects = () => {
+      const opts = cats.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+      document.getElementById('categoria_id').innerHTML = `<option value="">Sin categoría</option>${opts}`;
+      document.getElementById('filter-cat').innerHTML = `<option value="">Todas las categorías</option>${opts}`;
+      document.getElementById('cats-list').innerHTML = cats.map(c => `<span class="badge badge-teal" style="margin:0.15rem;">${c.nombre}</span>`).join('');
+    };
+
+    const loadCats = async () => {
+      const { data } = await supabaseClient.from('categorias_servicios').select('*').order('orden');
+      cats = data || [];
+      populateCatSelects();
+    };
+
+    const clearForm = () => {
+      ['servicio-id','nombre','categoria_id','duracion_min','precio','descripcion'].forEach(f => {
+        const el = document.getElementById(f); if (el) el.value = '';
+      });
+      document.getElementById('requiere_consentimiento').checked = false;
+      document.getElementById('form-title').textContent = 'Nuevo servicio';
+      document.getElementById('submit-btn').textContent = 'Guardar servicio';
+      document.getElementById('cancel-btn').style.display = 'none';
+      document.getElementById('form-error').textContent = '';
+    };
+
+    const fillForm = (s) => {
+      document.getElementById('servicio-id').value = s.id;
+      document.getElementById('nombre').value = s.nombre ?? '';
+      document.getElementById('categoria_id').value = s.categoria_id ?? '';
+      document.getElementById('duracion_min').value = s.duracion_min ?? '';
+      document.getElementById('precio').value = s.precio ?? '';
+      document.getElementById('descripcion').value = s.descripcion ?? '';
+      document.getElementById('requiere_consentimiento').checked = !!s.requiere_consentimiento;
+      document.getElementById('form-title').textContent = `Editar: ${s.nombre}`;
+      document.getElementById('submit-btn').textContent = 'Actualizar';
+      document.getElementById('cancel-btn').style.display = 'inline-block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const renderServicios = (list) => {
+      const tbody = document.getElementById('servicios-body');
+      if (!list.length) { tbody.innerHTML = '<tr><td colspan="6">Sin servicios.</td></tr>'; return; }
+      tbody.innerHTML = list.map(s => {
+        const cat = cats.find(c => c.id === s.categoria_id);
+        return `<tr>
+          <td>${s.nombre}</td>
+          <td>${cat?.nombre ?? '–'}</td>
+          <td>${s.duracion_min ? s.duracion_min + ' min' : '–'}</td>
+          <td>${s.precio != null ? fmtMoneda(s.precio) : '–'}</td>
+          <td>${s.requiere_consentimiento ? '<span class="badge badge-yellow">Sí</span>' : 'No'}</td>
+          <td>
+            <button class="btn-secondary btn-sm edit-btn" data-id="${s.id}">Editar</button>
+            <button class="btn-danger btn-sm del-btn" data-id="${s.id}">Desactivar</button>
+          </td>
+        </tr>`;
+      }).join('');
+      tbody.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => fillForm(servicios.find(x => x.id === b.dataset.id))));
+      tbody.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('¿Desactivar este servicio?')) return;
+        await supabaseClient.from('servicios').update({ activo: false }).eq('id', b.dataset.id);
+        await loadServicios();
+      }));
+    };
+
+    const applyFilter = () => {
+      const cat = document.getElementById('filter-cat').value;
+      renderServicios(cat ? servicios.filter(s => s.categoria_id === cat) : servicios);
+    };
+
+    const loadServicios = async () => {
+      const { data } = await supabaseClient.from('servicios').select('*').eq('activo', true).order('nombre');
+      servicios = data || [];
+      applyFilter();
+    };
+
+    document.getElementById('filter-cat').addEventListener('change', applyFilter);
+    document.getElementById('cancel-btn').addEventListener('click', clearForm);
+
+    document.getElementById('cat-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nombre = document.getElementById('cat-nombre').value.trim();
+      if (!nombre) return;
+      await supabaseClient.from('categorias_servicios').insert({ nombre, orden: cats.length + 1 });
+      document.getElementById('cat-nombre').value = '';
+      await loadCats();
+    });
+
+    document.getElementById('servicio-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('servicio-id').value;
+      const payload = {
+        nombre: document.getElementById('nombre').value,
+        categoria_id: document.getElementById('categoria_id').value || null,
+        duracion_min: document.getElementById('duracion_min').value || null,
+        precio: document.getElementById('precio').value || null,
+        descripcion: document.getElementById('descripcion').value || null,
+        requiere_consentimiento: document.getElementById('requiere_consentimiento').checked,
+      };
+      const { error } = id
+        ? await supabaseClient.from('servicios').update(payload).eq('id', id)
+        : await supabaseClient.from('servicios').insert(payload);
+      if (error) { document.getElementById('form-error').textContent = error.message; return; }
+      clearForm(); await loadServicios();
+    });
+
+    (async () => {
+      const s = await initLayout('servicios');
+      if (!s) return;
+      await loadCats();
+      await loadServicios();
+    })();
+  </script>
+</body>
+</html>
