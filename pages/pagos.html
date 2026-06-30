@@ -40,6 +40,30 @@
                 <input type="datetime-local" id="fecha" />
               </div>
             </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Documento</label>
+                <select id="tipo_documento">
+                  <option value="ninguno">Sin documento</option>
+                  <option value="boleta">Boleta</option>
+                  <option value="factura">Factura</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>IVA (19%)</label>
+                <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer;margin-top:0.4rem;">
+                  <input type="checkbox" id="con_iva" style="width:auto;" />
+                  El monto incluye IVA
+                </label>
+              </div>
+              <div class="form-group">
+                <label>Vincular a cotización (opcional)</label>
+                <select id="cotizacion_id"><option value="">— Ninguna —</option></select>
+              </div>
+            </div>
+            <p style="font-size:0.78rem;color:var(--color-text-muted);margin:0 0 0.75rem;">
+              Tip: boleta/factura o pago con tarjeta normalmente llevan IVA. Promocionales por transferencia, sin documento. Vincular a una cotización aceptada evita volver a cargar el mismo ingreso.
+            </p>
             <div class="form-group"><label>Notas</label><input id="notas" placeholder="Concepto, referencia…" /></div>
             <button type="submit">Registrar pago</button>
             <p class="error-message" id="form-error"></p>
@@ -57,7 +81,7 @@
           <div id="total-banner" style="margin-bottom:0.75rem;font-weight:700;font-size:1.05rem;color:var(--color-primary-dark);"></div>
           <table>
             <thead>
-              <tr><th>Fecha</th><th>Paciente</th><th>Monto</th><th>Método</th><th>Notas</th><th>Acciones</th></tr>
+              <tr><th>Fecha</th><th>Paciente</th><th>Monto</th><th>Método</th><th>Documento</th><th>IVA</th><th>Notas</th><th>Acciones</th></tr>
             </thead>
             <tbody id="pagos-body"><tr><td colspan="6">Cargando...</td></tr></tbody>
           </table>
@@ -72,18 +96,35 @@
   <script src="../assets/js/layout.js"></script>
   <script>
     const METODOS = { efectivo:'Efectivo', tarjeta_debito:'Débito', tarjeta_credito:'Crédito', transferencia:'Transferencia', otro:'Otro' };
+    const DOCS = { ninguno:'Sin doc.', boleta:'Boleta', factura:'Factura' };
     let pagosCache = [];
+    let cotsAprobadas = [];
+
+    // Dado un pago, devuelve { neto, iva } según con_iva (monto es el total final)
+    const desglosar = (p) => {
+      const monto = Number(p.monto || 0);
+      if (p.con_iva) {
+        const neto = Math.round(monto / (1 + IVA_PCT/100));
+        return { neto, iva: monto - neto };
+      }
+      return { neto: monto, iva: 0 };
+    };
 
     const renderPagos = (list) => {
       const tbody = document.getElementById('pagos-body');
       const total = list.reduce((s, p) => s + Number(p.monto||0), 0);
-      document.getElementById('total-banner').textContent = list.length ? `Total: ${fmtMoneda(total)}` : '';
-      if (!list.length) { tbody.innerHTML = '<tr><td colspan="6">Sin pagos.</td></tr>'; return; }
+      const ivaTotal = list.reduce((s, p) => s + desglosar(p).iva, 0);
+      document.getElementById('total-banner').innerHTML = list.length
+        ? `Total: ${fmtMoneda(total)} <span style="font-size:0.8rem;color:var(--color-text-muted);font-weight:400;">· IVA incluido: ${fmtMoneda(ivaTotal)} · Neto: ${fmtMoneda(total - ivaTotal)}</span>`
+        : '';
+      if (!list.length) { tbody.innerHTML = '<tr><td colspan="8">Sin pagos.</td></tr>'; return; }
       tbody.innerHTML = list.map(p => `<tr>
         <td>${fmtFechaHora(p.fecha)}</td>
         <td>${p.pacientes ? `${p.pacientes.nombre} ${p.pacientes.apellido}` : '–'}</td>
         <td style="font-weight:600;">${fmtMoneda(p.monto)}</td>
         <td>${METODOS[p.metodo_pago] ?? p.metodo_pago ?? '–'}</td>
+        <td>${DOCS[p.tipo_documento] ?? '–'}</td>
+        <td>${p.con_iva ? '<span class="badge badge-green">Sí</span>' : '<span class="badge badge-gray">No</span>'}</td>
         <td>${p.notas ?? '–'}</td>
         <td><button class="btn-danger btn-sm del-btn" data-id="${p.id}">Eliminar</button></td>
       </tr>`).join('');
@@ -114,12 +155,35 @@
     document.getElementById('filter-paciente').addEventListener('change', load);
     document.getElementById('filter-mes').addEventListener('change', load);
 
+    // Auto-sugerencias: tarjeta o documento → IVA marcado por defecto
+    const sugerirIva = () => {
+      const metodo = document.getElementById('metodo_pago').value;
+      const doc = document.getElementById('tipo_documento').value;
+      const conIva = (metodo === 'tarjeta_debito' || metodo === 'tarjeta_credito' || doc === 'boleta' || doc === 'factura');
+      document.getElementById('con_iva').checked = conIva;
+    };
+    document.getElementById('metodo_pago').addEventListener('change', sugerirIva);
+    document.getElementById('tipo_documento').addEventListener('change', sugerirIva);
+
+    // Al vincular una cotización aceptada, autocompletar monto, IVA y paciente
+    document.getElementById('cotizacion_id').addEventListener('change', (e) => {
+      const cot = cotsAprobadas.find(c => c.id === e.target.value);
+      if (!cot) return;
+      document.getElementById('paciente_id').value = cot.paciente_id;
+      document.getElementById('monto').value = cot.total;
+      document.getElementById('con_iva').checked = !!cot.con_iva;
+      document.getElementById('notas').value = `Cotización ${fmtNumero('COT', cot.numero)}`;
+    });
+
     document.getElementById('pago-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const payload = {
         paciente_id: document.getElementById('paciente_id').value || null,
         monto: document.getElementById('monto').value,
         metodo_pago: document.getElementById('metodo_pago').value,
+        tipo_documento: document.getElementById('tipo_documento').value,
+        con_iva: document.getElementById('con_iva').checked,
+        cotizacion_id: document.getElementById('cotizacion_id').value || null,
         fecha: document.getElementById('fecha').value || new Date().toISOString(),
         notas: document.getElementById('notas').value || null,
       };
@@ -127,6 +191,9 @@
       if (error) { document.getElementById('form-error').textContent = error.message; return; }
       document.getElementById('monto').value = '';
       document.getElementById('notas').value = '';
+      document.getElementById('cotizacion_id').value = '';
+      document.getElementById('tipo_documento').value = 'ninguno';
+      document.getElementById('con_iva').checked = false;
       await load();
     });
 
@@ -141,6 +208,25 @@
         const label = `${p.apellido}, ${p.nombre}`;
         selPac.add(new Option(label, p.id));
         filterPac.add(new Option(label, p.id));
+      });
+
+      // Cotizaciones aceptadas (para vincular y evitar duplicar ingresos)
+      const { data: cots } = await supabaseClient
+        .from('cotizaciones')
+        .select('id, numero, paciente_id, con_iva, pacientes(nombre,apellido)')
+        .eq('estado', 'aprobada')
+        .order('numero', { ascending: false });
+      const { data: allItems } = await supabaseClient.from('cotizacion_items').select('cotizacion_id, cantidad, precio_unitario');
+      const netos = {};
+      (allItems || []).forEach(it => { netos[it.cotizacion_id] = (netos[it.cotizacion_id] || 0) + Number(it.cantidad) * Number(it.precio_unitario); });
+      cotsAprobadas = (cots || []).map(c => {
+        const neto = netos[c.id] || 0;
+        return { ...c, total: c.con_iva ? Math.round(neto * (1 + IVA_PCT/100)) : neto };
+      });
+      const selCot = document.getElementById('cotizacion_id');
+      cotsAprobadas.forEach(c => {
+        const nom = c.pacientes ? `${c.pacientes.apellido}, ${c.pacientes.nombre}` : '';
+        selCot.add(new Option(`${fmtNumero('COT', c.numero)} · ${nom} · ${fmtMoneda(c.total)}`, c.id));
       });
 
       const now = new Date(); now.setSeconds(0,0);

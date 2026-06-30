@@ -12,8 +12,25 @@ const NAV_ITEMS = [
   { key: 'stock',          icon: '⊡',  label: 'Stock',             href: 'stock.html' },
   { section: 'Administración' },
   { key: 'pagos',          icon: '$',  label: 'Pagos',             href: 'pagos.html' },
-  { key: 'reportes',       icon: '⊘',  label: 'Reportes',          href: 'reportes.html' },
+  { key: 'reportes',       icon: '◎',  label: 'Torre de Control',  href: 'reportes.html' },
 ];
+
+// IVA Chile
+const IVA_PCT = 19;
+
+const METODOS_PAGO = {
+  efectivo:        'Efectivo',
+  tarjeta_debito:  'Tarjeta débito',
+  tarjeta_credito: 'Tarjeta crédito',
+  transferencia:   'Transferencia',
+  otro:            'Otro',
+};
+
+const TIPOS_DOCUMENTO = {
+  ninguno: 'Sin documento',
+  boleta:  'Boleta',
+  factura: 'Factura',
+};
 
 const ESTADOS_TURNO = {
   pendiente:   { label: 'Pendiente',   badge: 'badge-gray' },

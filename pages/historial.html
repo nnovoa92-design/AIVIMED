@@ -201,7 +201,7 @@
         { data: pagos },
       ] = await Promise.all([
         supabaseClient.from('sesiones')
-          .select('*, servicios(nombre), personal(nombre,apellido)')
+          .select('*, servicios(nombre), lider:personal!personal_id(nombre,apellido), apoyo:personal!personal_apoyo_id(nombre,apellido)')
           .eq('paciente_id', pacienteId)
           .order('fecha', { ascending: false }),
         supabaseClient.from('turnos')
@@ -228,7 +228,10 @@
         timeline.innerHTML = '<p style="color:var(--color-text-muted);">Sin sesiones registradas.</p>';
       } else {
         timeline.innerHTML = sesiones.map(s => {
-          const profesional = s.personal ? `${s.personal.nombre} ${s.personal.apellido}` : '';
+          const profesional = [
+            s.lider ? `${s.lider.nombre} ${s.lider.apellido}` : '',
+            s.apoyo ? `+ ${s.apoyo.nombre} ${s.apoyo.apellido} (apoyo)` : ''
+          ].filter(Boolean).join(' ');
           return `<div class="timeline-item">
             <div class="timeline-fecha">${fmtFechaHora(s.fecha)}${profesional ? ' — ' + profesional : ''}</div>
             <div class="timeline-titulo">${s.servicios?.nombre ?? 'Sesión sin servicio'}</div>

@@ -27,8 +27,12 @@
                 <select id="servicio_id"><option value="">Seleccionar…</option></select>
               </div>
               <div class="form-group">
-                <label>Profesional</label>
+                <label>Profesional líder</label>
                 <select id="personal_id"><option value="">Sin asignar</option></select>
+              </div>
+              <div class="form-group">
+                <label>2ª Profesional (apoyo)</label>
+                <select id="personal_apoyo_id"><option value="">Sin asignar</option></select>
               </div>
               <div class="form-group">
                 <label>Fecha y hora *</label>
@@ -52,7 +56,7 @@
           </div>
           <table>
             <thead>
-              <tr><th>Fecha</th><th>Paciente</th><th>Servicio</th><th>Profesional</th><th>Detalle</th><th>Acciones</th></tr>
+              <tr><th>Fecha</th><th>Paciente</th><th>Servicio</th><th>Profesionales</th><th>Detalle</th><th>Acciones</th></tr>
             </thead>
             <tbody id="sesiones-body"><tr><td colspan="6">Cargando...</td></tr></tbody>
           </table>
@@ -69,7 +73,7 @@
     let sesionesCache = [];
 
     const clearForm = () => {
-      ['sesion-id','paciente_id','servicio_id','personal_id','detalle','observaciones'].forEach(f => {
+      ['sesion-id','paciente_id','servicio_id','personal_id','personal_apoyo_id','detalle','observaciones'].forEach(f => {
         const el = document.getElementById(f); if (el) el.value = '';
       });
       const now = new Date(); now.setSeconds(0,0);
@@ -85,6 +89,7 @@
       document.getElementById('paciente_id').value = s.paciente_id ?? '';
       document.getElementById('servicio_id').value = s.servicio_id ?? '';
       document.getElementById('personal_id').value = s.personal_id ?? '';
+      document.getElementById('personal_apoyo_id').value = s.personal_apoyo_id ?? '';
       document.getElementById('fecha').value = s.fecha ? s.fecha.slice(0,16) : '';
       document.getElementById('detalle').value = s.detalle ?? '';
       document.getElementById('observaciones').value = s.observaciones ?? '';
@@ -101,7 +106,7 @@
         <td>${fmtFechaHora(s.fecha)}</td>
         <td>${s.pacientes ? `${s.pacientes.nombre} ${s.pacientes.apellido}` : '–'}</td>
         <td>${s.servicios?.nombre ?? '–'}</td>
-        <td>${s.personal ? `${s.personal.nombre} ${s.personal.apellido}` : '–'}</td>
+        <td>${s.lider ? `${s.lider.nombre} ${s.lider.apellido}` : '–'}${s.apoyo ? `<br><span style="font-size:0.8em;color:var(--color-text-muted);">+ ${s.apoyo.nombre} ${s.apoyo.apellido} (apoyo)</span>` : ''}</td>
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${s.detalle ?? ''}">${s.detalle ?? '–'}</td>
         <td>
           <button class="btn-secondary btn-sm edit-btn" data-id="${s.id}">Editar</button>
@@ -120,7 +125,7 @@
       const pacId = document.getElementById('filter-paciente').value;
       let q = supabaseClient
         .from('sesiones')
-        .select('*, pacientes(nombre,apellido), servicios(nombre), personal(nombre,apellido)')
+        .select('*, pacientes(nombre,apellido), servicios(nombre), lider:personal!personal_id(nombre,apellido), apoyo:personal!personal_apoyo_id(nombre,apellido)')
         .order('fecha', { ascending: false })
         .limit(100);
       if (pacId) q = q.eq('paciente_id', pacId);
@@ -139,6 +144,7 @@
         paciente_id: document.getElementById('paciente_id').value || null,
         servicio_id: document.getElementById('servicio_id').value || null,
         personal_id: document.getElementById('personal_id').value || null,
+        personal_apoyo_id: document.getElementById('personal_apoyo_id').value || null,
         fecha: document.getElementById('fecha').value || null,
         detalle: document.getElementById('detalle').value || null,
         observaciones: document.getElementById('observaciones').value || null,
@@ -172,7 +178,11 @@
       (servicios||[]).forEach(sv => selSrv.add(new Option(sv.nombre, sv.id)));
 
       const selPer = document.getElementById('personal_id');
-      (personal||[]).forEach(p => selPer.add(new Option(`${p.nombre} ${p.apellido}`, p.id)));
+      const selApoyo = document.getElementById('personal_apoyo_id');
+      (personal||[]).forEach(p => {
+        selPer.add(new Option(`${p.nombre} ${p.apellido}`, p.id));
+        selApoyo.add(new Option(`${p.nombre} ${p.apellido}`, p.id));
+      });
 
       const now = new Date(); now.setSeconds(0,0);
       document.getElementById('fecha').value = now.toISOString().slice(0,16);

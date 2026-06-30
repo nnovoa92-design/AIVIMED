@@ -82,6 +82,13 @@
                   <option value="rechazada">Rechazada</option>
                 </select>
               </div>
+              <div class="form-group">
+                <label>IVA (19%)</label>
+                <label style="display:flex;align-items:center;gap:0.5rem;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer;margin-top:0.4rem;">
+                  <input type="checkbox" id="con_iva" style="width:auto;" />
+                  Aplicar IVA a esta cotización
+                </label>
+              </div>
             </div>
 
             <h3 style="margin:1.25rem 0 0.5rem;color:var(--color-primary-dark);">Ítems de la cotización</h3>
@@ -101,6 +108,8 @@
 
             <div class="totales-box">
               <table>
+                <tr id="row-neto"><td>Neto</td><td id="neto-display">$0</td></tr>
+                <tr id="row-iva"><td>IVA (19%)</td><td id="iva-display">$0</td></tr>
                 <tr><td>Total</td><td id="total-display">$0</td></tr>
               </table>
             </div>
@@ -208,8 +217,21 @@
 
     function fmt(n) { return fmtMoneda(n); }
 
-    function calcTotal() {
+    function calcNeto() {
       return items.reduce((s, it) => s + (Number(it.cantidad) || 0) * (Number(it.precio_unitario) || 0), 0);
+    }
+
+    // Actualiza neto / IVA / total según el checkbox con_iva
+    function actualizarTotales() {
+      const neto = calcNeto();
+      const conIva = document.getElementById('con_iva').checked;
+      const iva = conIva ? Math.round(neto * IVA_PCT / 100) : 0;
+      const total = neto + iva;
+      document.getElementById('row-iva').style.display = conIva ? '' : 'none';
+      document.getElementById('row-neto').style.display = conIva ? '' : 'none';
+      document.getElementById('neto-display').textContent = fmt(neto);
+      document.getElementById('iva-display').textContent = fmt(iva);
+      document.getElementById('total-display').textContent = fmt(total);
     }
 
     function renderItems() {
@@ -236,7 +258,7 @@
         }).join('');
       }
 
-      document.getElementById('total-display').textContent = fmt(calcTotal());
+      actualizarTotales();
 
       tbody.querySelectorAll('tr[data-idx]').forEach(tr => {
         const idx = Number(tr.dataset.idx);
@@ -260,13 +282,13 @@
         tr.querySelector('.item-cant').addEventListener('input', (e) => {
           items[idx].cantidad = e.target.value;
           tr.querySelector('.col-subtotal').textContent = fmt((Number(items[idx].cantidad)||0) * (Number(items[idx].precio_unitario)||0));
-          document.getElementById('total-display').textContent = fmt(calcTotal());
+          actualizarTotales();
         });
 
         tr.querySelector('.item-precio').addEventListener('input', (e) => {
           items[idx].precio_unitario = e.target.value;
           tr.querySelector('.col-subtotal').textContent = fmt((Number(items[idx].cantidad)||0) * (Number(items[idx].precio_unitario)||0));
-          document.getElementById('total-display').textContent = fmt(calcTotal());
+          actualizarTotales();
         });
 
         tr.querySelector('.del-item-btn').addEventListener('click', () => {
@@ -285,6 +307,7 @@
       document.getElementById('cot-id').value = '';
       document.getElementById('paciente_id').value = '';
       document.getElementById('estado').value = 'borrador';
+      document.getElementById('con_iva').checked = false;
       document.getElementById('notas').value = '';
       items = [];
       renderItems();
@@ -300,6 +323,7 @@
       document.getElementById('cot-id').value = cot.id;
       document.getElementById('paciente_id').value = cot.paciente_id;
       document.getElementById('estado').value = cot.estado;
+      document.getElementById('con_iva').checked = !!cot.con_iva;
       document.getElementById('notas').value = cot.notas || '';
 
       const { data: its } = await supabaseClient.from('cotizacion_items').select('*').eq('cotizacion_id', id).order('orden');
@@ -314,6 +338,7 @@
     }
 
     document.getElementById('cancel-btn').addEventListener('click', clearForm);
+    document.getElementById('con_iva').addEventListener('change', actualizarTotales);
 
     document.getElementById('cot-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -328,6 +353,7 @@
       const payloadCot = {
         paciente_id: pacienteId,
         estado: document.getElementById('estado').value,
+        con_iva: document.getElementById('con_iva').checked,
         notas: document.getElementById('notas').value || null,
       };
 
@@ -361,18 +387,25 @@
     function renderCots(list) {
       const tbody = document.getElementById('cots-body');
       if (!list.length) { tbody.innerHTML = '<tr><td colspan="6">Sin cotizaciones registradas.</td></tr>'; return; }
-      tbody.innerHTML = list.map(c => `<tr>
+      tbody.innerHTML = list.map(c => {
+        const aprobada = c.estado === 'aprobada';
+        const decidir = (c.estado === 'borrador' || c.estado === 'enviada');
+        return `<tr>
         <td>${fmtNumero('COT', c.numero)}</td>
         <td>${fmtFecha(c.fecha)}</td>
         <td>${c.pacientes ? `${c.pacientes.nombre} ${c.pacientes.apellido}` : '–'}</td>
-        <td style="font-weight:600;">${fmt(c.total)}</td>
+        <td style="font-weight:600;">${fmt(c.total)}${c.con_iva ? ' <span style="font-size:0.7em;color:var(--color-text-muted);">c/IVA</span>' : ''}</td>
         <td>${badgeEstado(c.estado, ESTADOS_COTIZACION)}</td>
-        <td>
+        <td style="white-space:nowrap;">
+          ${decidir ? `<button class="btn-sm aceptar-btn" data-id="${c.id}" style="background:var(--color-success);border-color:var(--color-success);">Aceptar</button>
+          <button class="btn-danger btn-sm rechazar-btn" data-id="${c.id}">Rechazar</button>` : ''}
+          ${aprobada ? `<button class="btn-sm agendar-btn" data-id="${c.id}" data-pac="${c.paciente_id}">Agendar</button>` : ''}
           <button class="btn-secondary btn-sm edit-btn" data-id="${c.id}">Editar</button>
-          <button class="btn-secondary btn-sm pdf-btn" data-id="${c.id}">Imprimir / PDF</button>
+          <button class="btn-secondary btn-sm pdf-btn" data-id="${c.id}">PDF</button>
           <button class="btn-danger btn-sm del-btn" data-id="${c.id}">Eliminar</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+      }).join('');
 
       tbody.querySelectorAll('.edit-btn').forEach(b => b.addEventListener('click', () => editCotizacion(b.dataset.id)));
       tbody.querySelectorAll('.pdf-btn').forEach(b => b.addEventListener('click', () => generarPDF(b.dataset.id)));
@@ -380,6 +413,21 @@
         if (!confirm('¿Eliminar esta cotización?')) return;
         await supabaseClient.from('cotizaciones').delete().eq('id', b.dataset.id);
         await loadCotizaciones();
+      }));
+      tbody.querySelectorAll('.rechazar-btn').forEach(b => b.addEventListener('click', async () => {
+        await supabaseClient.from('cotizaciones').update({ estado: 'rechazada' }).eq('id', b.dataset.id);
+        await loadCotizaciones();
+      }));
+      tbody.querySelectorAll('.aceptar-btn').forEach(b => b.addEventListener('click', async () => {
+        await supabaseClient.from('cotizaciones').update({ estado: 'aprobada' }).eq('id', b.dataset.id);
+        await loadCotizaciones();
+        if (confirm('Cotización aceptada. ¿Querés agendar una hora para este paciente ahora?')) {
+          const c = cotsCache.find(x => x.id === b.dataset.id);
+          window.location.href = 'agenda.html?paciente=' + (c?.paciente_id || '');
+        }
+      }));
+      tbody.querySelectorAll('.agendar-btn').forEach(b => b.addEventListener('click', () => {
+        window.location.href = 'agenda.html?paciente=' + b.dataset.pac;
       }));
     }
 
@@ -396,7 +444,11 @@
         totales[it.cotizacion_id] = (totales[it.cotizacion_id] || 0) + Number(it.cantidad) * Number(it.precio_unitario);
       });
 
-      cotsCache = (cots || []).map(c => ({ ...c, total: totales[c.id] || 0 }));
+      cotsCache = (cots || []).map(c => {
+        const neto = totales[c.id] || 0;
+        const total = c.con_iva ? Math.round(neto * (1 + IVA_PCT / 100)) : neto;
+        return { ...c, neto, total };
+      });
 
       const filtro = document.getElementById('filter-estado').value;
       renderCots(filtro ? cotsCache.filter(c => c.estado === filtro) : cotsCache);
@@ -433,7 +485,9 @@
           <td style="text-align:right;">${fmt(it.cantidad * it.precio_unitario)}</td>
         </tr>`).join('');
 
-      const total = (its || []).reduce((s, it) => s + it.cantidad * it.precio_unitario, 0);
+      const neto = (its || []).reduce((s, it) => s + it.cantidad * it.precio_unitario, 0);
+      const iva = cot.con_iva ? Math.round(neto * IVA_PCT / 100) : 0;
+      const total = neto + iva;
       const pacienteNombre = pac ? `${pac.nombre} ${pac.apellido}` : (cot.pacientes ? `${cot.pacientes.nombre} ${cot.pacientes.apellido}` : '–');
       const logoTag = logoDataUrl
         ? `<img src="${logoDataUrl}" alt="AIVIMED" style="width:78px;height:auto;border-radius:8px;" />`
@@ -503,6 +557,7 @@
     <thead><tr><th>Servicio</th><th style="text-align:center;">Cant.</th><th style="text-align:right;">Precio unit.</th><th style="text-align:right;">Subtotal</th></tr></thead>
     <tbody>${filas || '<tr><td colspan="4">Sin ítems</td></tr>'}</tbody>
   </table>
+  ${cot.con_iva ? `<div style="text-align:right;font-size:14px;margin-top:12px;">Neto: ${fmt(neto)}<br>IVA (19%): ${fmt(iva)}</div>` : ''}
   <div class="total">Total: ${fmt(total)}</div>
   ${cot.notas ? `<div class="notas"><strong>Notas:</strong> ${cot.notas}</div>` : ''}
 

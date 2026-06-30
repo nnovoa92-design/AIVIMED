@@ -408,6 +408,17 @@
       const selPer=document.getElementById('personal_id');
       (personal||[]).forEach(p=>selPer.add(new Option(`${p.nombre} ${p.apellido}`,p.id)));
       await loadTurnos();
+
+      // Si viene ?paciente=ID (desde una cotización aceptada), abrir el form con ese paciente
+      const pacParam = new URLSearchParams(window.location.search).get('paciente');
+      if (pacParam) {
+        openForm(null);
+        const sel = document.getElementById('paciente_id');
+        sel.value = pacParam;
+        if (sel.value !== pacParam) { // por si el paciente está inactivo / no está en la lista
+          alert('No se encontró el paciente en la lista activa. Seleccionalo manualmente.');
+        }
+      }
     })();
   </script>
 </body>
