@@ -400,6 +400,8 @@
           ${decidir ? `<button class="btn-sm aceptar-btn" data-id="${c.id}" style="background:var(--color-success);border-color:var(--color-success);">Aceptar</button>
           <button class="btn-danger btn-sm rechazar-btn" data-id="${c.id}">Rechazar</button>` : ''}
           ${aprobada ? `<button class="btn-sm agendar-btn" data-id="${c.id}" data-pac="${c.paciente_id}">Agendar</button>` : ''}
+          <button class="btn-sm wa-btn" data-id="${c.id}" style="background:#25d366;border-color:#25d366;">WhatsApp</button>
+          <button class="btn-sm mail-btn" data-id="${c.id}" style="background:#1a73e8;border-color:#1a73e8;">Correo</button>
           <button class="btn-secondary btn-sm edit-btn" data-id="${c.id}">Editar</button>
           <button class="btn-secondary btn-sm pdf-btn" data-id="${c.id}">PDF</button>
           <button class="btn-danger btn-sm del-btn" data-id="${c.id}">Eliminar</button>
@@ -429,12 +431,48 @@
       tbody.querySelectorAll('.agendar-btn').forEach(b => b.addEventListener('click', () => {
         window.location.href = 'agenda.html?paciente=' + b.dataset.pac;
       }));
+      tbody.querySelectorAll('.wa-btn').forEach(b => b.addEventListener('click', () => compartirWhatsApp(b.dataset.id)));
+      tbody.querySelectorAll('.mail-btn').forEach(b => b.addEventListener('click', () => compartirCorreo(b.dataset.id)));
+    }
+
+    // Enlace público de respuesta de la cotización (mismo dominio que la app)
+    function linkRespuesta(id) {
+      return `${location.origin}/respuesta.html?cot=${id}`;
+    }
+
+    function mensajeCotizacion(c) {
+      const nombre = c.pacientes ? c.pacientes.nombre : '';
+      return `Hola ${nombre}! 👋\n\nTe compartimos tu cotización ${fmtNumero('COT', c.numero)} de AIVIMED por un total de ${fmt(c.total)}.\n\n`
+        + `Podés revisarla y responder (Aceptar, Rechazar o dejar una Observación) en este enlace:\n${linkRespuesta(c.id)}\n\n`
+        + `¡Gracias por confiar en AIVIMED — Salud Integral! 🦋`;
+    }
+
+    function compartirWhatsApp(id) {
+      const c = cotsCache.find(x => x.id === id);
+      if (!c) return;
+      let tel = (c.pacientes?.telefono || '').replace(/\D/g, '');
+      if (tel && tel.length === 9 && tel.startsWith('9')) tel = '56' + tel; // CL: 9 dígitos -> +56
+      const base = tel ? `https://wa.me/${tel}` : `https://wa.me/`;
+      const url = `${base}?text=${encodeURIComponent(mensajeCotizacion(c))}`;
+      let w = null; try { w = window.open(url, '_blank'); } catch(e) {}
+      if (!w) window.location.href = url;
+    }
+
+    function compartirCorreo(id) {
+      const c = cotsCache.find(x => x.id === id);
+      if (!c) return;
+      const para = c.pacientes?.email || '';
+      const asunto = `Cotización ${fmtNumero('COT', c.numero)} — AIVIMED Salud Integral`;
+      const p = new URLSearchParams({ view: 'cm', fs: '1', to: para, su: asunto, body: mensajeCotizacion(c) });
+      const url = 'https://mail.google.com/mail/?' + p.toString();
+      let w = null; try { w = window.open(url, '_blank'); } catch(e) {}
+      if (!w) window.location.href = url;
     }
 
     async function loadCotizaciones() {
       const { data: cots } = await supabaseClient
         .from('cotizaciones')
-        .select('*, pacientes(nombre,apellido)')
+        .select('*, pacientes(nombre,apellido,telefono,email)')
         .order('numero', { ascending: false });
 
       // calcular total de cada cotización

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tu cotización — AIVIMED</title>
+  <meta property="og:title" content="AIVIMED — Tu cotización" />
+  <meta property="og:description" content="Revisá tu cotización y respondé en un clic." />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=DM+Sans:wght@400;500;600;700&display=swap" />
+  <style>
+    :root{
+      --primary:#439974;--primary-dark:#2d7558;--primary-light:#e8f5ef;
+      --accent:#c5a44e;--text:#1a2320;--muted:#7a8a86;--border:#e4dfe8;--bg:#f0f2f1;--danger:#c0524a;--radius:14px;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);}
+    .wrap{max-width:560px;margin:0 auto;padding:1rem;}
+    .head{text-align:center;padding:1.5rem 0 1rem;}
+    .head img{width:88px;border-radius:12px;}
+    .head .brand{font-family:'Cinzel Decorative',serif;font-size:1.5rem;color:var(--primary-dark);letter-spacing:.05em;margin-top:.4rem;}
+    .head .sub{font-family:'Playfair Display',serif;font-style:italic;color:var(--accent);font-size:.9rem;}
+    .card{background:#fff;border-radius:var(--radius);box-shadow:0 4px 16px rgba(67,153,116,.1);padding:1.5rem;margin-bottom:1rem;}
+    h1{font-size:1.2rem;color:var(--primary-dark);margin:0 0 .25rem;}
+    .meta{font-size:.85rem;color:var(--muted);margin-bottom:1rem;}
+    table{width:100%;border-collapse:collapse;font-size:.9rem;}
+    th,td{border-bottom:1px solid var(--border);padding:.55rem .4rem;text-align:left;}
+    th{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);}
+    .tot{text-align:right;font-size:1.15rem;font-weight:700;color:var(--primary-dark);margin-top:1rem;}
+    .estado{display:inline-block;padding:.25rem .7rem;border-radius:999px;font-size:.8rem;font-weight:600;}
+    .e-borrador,.e-enviada{background:#d3e4f5;color:#1a4f8a;}
+    .e-aprobada{background:#d3ede0;color:#1e6040;}
+    .e-rechazada{background:#fad5d3;color:#8a1a18;}
+    .acciones{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.5rem;}
+    button{font-family:inherit;font-size:.95rem;font-weight:600;padding:.85rem;border-radius:var(--radius);border:none;cursor:pointer;}
+    .b-aceptar{background:var(--primary);color:#fff;grid-column:1/-1;}
+    .b-rechazar{background:#fff;color:var(--danger);border:1.5px solid var(--danger);}
+    .b-obs{background:#fff;color:var(--primary-dark);border:1.5px solid var(--primary);}
+    textarea{width:100%;font-family:inherit;font-size:.9rem;padding:.6rem;border:1.5px solid var(--border);border-radius:var(--radius);margin-top:.5rem;}
+    .ok-msg{text-align:center;padding:2rem 1rem;}
+    .ok-msg .check{font-size:2.5rem;}
+    .muted{color:var(--muted);font-size:.85rem;text-align:center;padding:2rem;}
+    .footer{text-align:center;font-size:.75rem;color:var(--muted);padding:1.5rem 0;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <img src="assets/img/logo.png" alt="AIVIMED" onerror="this.style.display='none'" />
+      <div class="brand">AIVIMED</div>
+      <div class="sub">Salud Integral</div>
+    </div>
+    <div id="contenido"><div class="muted">Cargando tu cotización…</div></div>
+    <div class="footer">AIVIMED · Aníbal Pinto 531, Of. 65, Concepción · aivimed.salud@gmail.com</div>
+  </div>
+
+  <script src="assets/vendor/supabase.min.js"></script>
+  <script>
+    const sb = supabase.createClient(
+      'https://qaeeqdfolgjobwxdpojd.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhZWVxZGZvbGdqb2J3eGRwb2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjUxMDQsImV4cCI6MjA5NjcwMTEwNH0.HgGiUKN38A-anizmwPZOLftFBZXsyG862ibF2LwnRAs',
+      { db: { schema: 'bienestar' } }
+    );
+    const IVA_PCT = 19;
+    const cotId = new URLSearchParams(location.search).get('cot');
+    const fmt = n => (n==null||isNaN(+n)) ? '–' : (+n).toLocaleString('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0});
+    const fmtFecha = d => d ? new Date(d).toLocaleDateString('es-CL',{dateStyle:'long'}) : '–';
+    const ESTADOS = { borrador:'En revisión', enviada:'Enviada', aprobada:'Aceptada', rechazada:'Rechazada' };
+
+    const cont = document.getElementById('contenido');
+    let cot = null;
+
+    async function cargar() {
+      if (!cotId) { cont.innerHTML = '<div class="muted">Enlace inválido.</div>'; return; }
+      const { data, error } = await sb.rpc('obtener_cotizacion_publica', { p_cot_id: cotId });
+      if (error || !data) { cont.innerHTML = '<div class="muted">No se encontró la cotización. Verificá el enlace.</div>'; return; }
+      cot = data;
+      render();
+    }
+
+    function render() {
+      const neto = (cot.items||[]).reduce((s,i)=>s + Number(i.cantidad)*Number(i.precio_unitario), 0);
+      const iva = cot.con_iva ? Math.round(neto*IVA_PCT/100) : 0;
+      const total = neto + iva;
+      const filas = (cot.items||[]).map(i => `<tr>
+        <td>${i.descripcion}</td>
+        <td style="text-align:center;">${i.cantidad}</td>
+        <td style="text-align:right;">${fmt(i.cantidad*i.precio_unitario)}</td></tr>`).join('');
+
+      const yaRespondida = (cot.estado === 'aprobada' || cot.estado === 'rechazada');
+
+      cont.innerHTML = `
+        <div class="card">
+          <h1>Cotización N° ${String(cot.numero).padStart(4,'0')}</h1>
+          <div class="meta">
+            ${cot.paciente ? cot.paciente.nombre + ' ' + cot.paciente.apellido + ' · ' : ''}${fmtFecha(cot.fecha)}<br>
+            Estado: <span class="estado e-${cot.estado}">${ESTADOS[cot.estado]||cot.estado}</span>
+          </div>
+          <table>
+            <thead><tr><th>Servicio</th><th style="text-align:center;">Cant.</th><th style="text-align:right;">Subtotal</th></tr></thead>
+            <tbody>${filas||'<tr><td colspan="3">Sin ítems</td></tr>'}</tbody>
+          </table>
+          ${cot.con_iva ? `<div style="text-align:right;font-size:.85rem;color:var(--muted);margin-top:.5rem;">Neto: ${fmt(neto)} · IVA: ${fmt(iva)}</div>` : ''}
+          <div class="tot">Total: ${fmt(total)}</div>
+          ${cot.notas ? `<p style="font-size:.85rem;color:var(--muted);">Notas: ${cot.notas}</p>` : ''}
+        </div>
+
+        ${yaRespondida
+          ? `<div class="card ok-msg"><div class="check">${cot.estado==='aprobada'?'✅':'☑️'}</div>
+             <p>Ya registramos tu respuesta: <strong>${ESTADOS[cot.estado]}</strong>.<br>¡Gracias! Nos pondremos en contacto.</p></div>`
+          : `<div class="card">
+              <p style="margin-top:0;font-weight:600;color:var(--primary-dark);">¿Querés confirmar esta cotización?</p>
+              <div class="acciones">
+                <button class="b-aceptar" id="b-aceptar">Aceptar cotización</button>
+                <button class="b-rechazar" id="b-rechazar">Rechazar</button>
+                <button class="b-obs" id="b-obs">Dejar observación</button>
+              </div>
+              <div id="obs-box" style="display:none;">
+                <textarea id="obs-text" rows="3" placeholder="Escribí tu consulta u observación…"></textarea>
+                <button class="b-aceptar" id="b-enviar-obs" style="margin-top:.5rem;">Enviar observación</button>
+              </div>
+              <p class="error" id="err" style="color:var(--danger);font-size:.85rem;"></p>
+            </div>`
+        }`;
+
+      if (!yaRespondida) {
+        document.getElementById('b-aceptar').addEventListener('click', () => responder('aceptar'));
+        document.getElementById('b-rechazar').addEventListener('click', () => { if (confirm('¿Rechazar esta cotización?')) responder('rechazar'); });
+        document.getElementById('b-obs').addEventListener('click', () => {
+          document.getElementById('obs-box').style.display = 'block';
+        });
+        document.getElementById('b-enviar-obs').addEventListener('click', () => {
+          const obs = document.getElementById('obs-text').value.trim();
+          if (!obs) { document.getElementById('err').textContent = 'Escribí tu observación.'; return; }
+          responder('observar', obs);
+        });
+      }
+    }
+
+    async function responder(accion, obs) {
+      const { error } = await sb.rpc('responder_cotizacion', { p_cot_id: cotId, p_accion: accion, p_obs: obs || null });
+      if (error) { const e = document.getElementById('err'); if (e) e.textContent = 'Error: ' + error.message; return; }
+      if (accion === 'observar') {
+        cont.innerHTML = '<div class="card ok-msg"><div class="check">📝</div><p>¡Gracias! Recibimos tu observación y te responderemos a la brevedad.</p></div>';
+      } else {
+        await cargar();
+      }
+    }
+
+    cargar();
+  </script>
+</body>
+</html>
