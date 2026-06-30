@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { key: 'agenda',         icon: '▦',  label: 'Agenda',            href: 'agenda.html' },
   { key: 'sesiones',       icon: '✎',  label: 'Fichas de sesión',  href: 'sesiones.html' },
   { key: 'consentimientos',icon: '✓',  label: 'Consentimientos',   href: 'consentimientos.html' },
+  { key: 'cotizaciones',   icon: '▤',  label: 'Cotizaciones',      href: 'cotizaciones.html' },
   { section: 'Catálogos' },
   { key: 'servicios',      icon: '◈',  label: 'Servicios',         href: 'servicios.html' },
   { key: 'personal',       icon: '⚕',  label: 'Personal',          href: 'personal.html' },
@@ -21,6 +22,17 @@ const ESTADOS_TURNO = {
   cancelado:   { label: 'Cancelado',   badge: 'badge-red' },
   ausente:     { label: 'Ausente',     badge: 'badge-yellow' },
 };
+
+const ESTADOS_COTIZACION = {
+  borrador:  { label: 'Borrador',  badge: 'badge-gray' },
+  enviada:   { label: 'Enviada',   badge: 'badge-blue' },
+  aprobada:  { label: 'Aprobada',  badge: 'badge-green' },
+  rechazada: { label: 'Rechazada', badge: 'badge-red' },
+};
+
+function fmtNumero(prefijo, numero) {
+  return `${prefijo}-${String(numero ?? 0).padStart(4, '0')}`;
+}
 
 function badgeEstado(estado, mapa) {
   const e = (mapa || {})[estado] || { label: estado, badge: 'badge-gray' };
