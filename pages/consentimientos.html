@@ -326,16 +326,25 @@
         <td>${c.nombre_firmante || '–'}</td>
         <td>${estado}</td>
         <td style="white-space:nowrap;">
-          ${!c.firmado ? `<button class="btn-sm share-btn" data-id="${c.id}" style="background:#25d366;border-color:#25d366;">Enviar a firmar</button>` : ''}
+          ${!c.firmado ? `<button class="btn-sm wa-btn" data-id="${c.id}" style="background:#25d366;border-color:#25d366;">WhatsApp</button>
+          <button class="btn-sm mail-btn" data-id="${c.id}" style="background:#1a73e8;border-color:#1a73e8;">Correo</button>` : ''}
           <button class="btn-secondary btn-sm print-btn" data-id="${c.id}">Imprimir</button>
           <button class="btn-danger btn-sm del-btn" data-id="${c.id}">Eliminar</button>
         </td>
       </tr>`;
       }).join('');
 
-      tbody.querySelectorAll('.share-btn').forEach(b => b.addEventListener('click', () => {
+      tbody.querySelectorAll('.wa-btn').forEach(b => b.addEventListener('click', () => {
         const c = consentsCache.find(x => x.id === b.dataset.id);
-        abrirCompartir(c.id, c.pacientes);
+        const url = urlWhatsApp(c.pacientes, c.id);
+        let w=null; try{ w=window.open(url,'_blank'); }catch(e){}
+        if(!w) window.location.href = url;
+      }));
+      tbody.querySelectorAll('.mail-btn').forEach(b => b.addEventListener('click', () => {
+        const c = consentsCache.find(x => x.id === b.dataset.id);
+        const url = urlCorreo(c.pacientes, c.id);
+        let w=null; try{ w=window.open(url,'_blank'); }catch(e){}
+        if(!w) window.location.href = url;
       }));
       tbody.querySelectorAll('.print-btn').forEach(b => b.addEventListener('click', () => printConsent(b.dataset.id)));
       tbody.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', async () => {
@@ -422,40 +431,34 @@
       await load();
     });
 
-    // Guardar pendiente y compartir para firma remota
-    document.getElementById('enviar-btn').addEventListener('click', async () => {
-      const pacId = document.getElementById('paciente_id').value;
-      const id = await guardarConsentimiento(false);
-      if (!id) return;
-      const { data: pac } = await supabaseClient.from('pacientes').select('nombre,apellido,telefono,email').eq('id', pacId).single();
-      clearForm();
-      await load();
-      abrirCompartir(id, pac);
-    });
-
     // ─── Compartir enlace de firma ───
     function linkFirma(id) { return `${location.origin}/firmar-consentimiento.html?c=${id}`; }
     function mensajeFirma(pac, id) {
       const nombre = pac ? pac.nombre : '';
       return `Hola ${nombre}! 👋\n\nAntes de tu atención en AIVIMED, por favor lee y firma tu consentimiento informado desde este enlace (puedes hacerlo desde el celular):\n${linkFirma(id)}\n\n¡Gracias! 🦋`;
     }
-    let compartirCtx = null;
-    function abrirCompartir(id, pac) {
-      compartirCtx = { id, pac };
-      const tel = (pac?.telefono || '').replace(/\D/g, '');
-      const opciones = `Consentimiento creado como pendiente.\n\nAceptar = abrir WhatsApp. Cancelar = abrir correo.`;
-      if (confirm(opciones)) {
-        let t = tel; if (t && t.length === 9 && t.startsWith('9')) t = '56' + t;
-        const url = `https://wa.me/${t}?text=${encodeURIComponent(mensajeFirma(pac, id))}`;
-        let w=null; try{ w=window.open(url,'_blank'); }catch(e){}
-        if(!w) window.location.href = url;
-      } else {
-        const p = new URLSearchParams({ view:'cm', fs:'1', to: pac?.email || '', su: 'Consentimiento informado — AIVIMED', body: mensajeFirma(pac, id) });
-        const url = 'https://mail.google.com/mail/?' + p.toString();
-        let w=null; try{ w=window.open(url,'_blank'); }catch(e){}
-        if(!w) window.location.href = url;
-      }
+    function urlWhatsApp(pac, id) {
+      let t = (pac?.telefono || '').replace(/\D/g, '');
+      if (t && t.length === 9 && t.startsWith('9')) t = '56' + t;
+      return `https://wa.me/${t}?text=${encodeURIComponent(mensajeFirma(pac, id))}`;
     }
+    function urlCorreo(pac, id) {
+      const p = new URLSearchParams({ view:'cm', fs:'1', to: pac?.email || '', su: 'Consentimiento informado — AIVIMED', body: mensajeFirma(pac, id) });
+      return 'https://mail.google.com/mail/?' + p.toString();
+    }
+
+    // Guardar pendiente y abrir WhatsApp (ventana abierta ANTES del await para evitar bloqueo)
+    document.getElementById('enviar-btn').addEventListener('click', async () => {
+      const win = window.open('', '_blank');   // se abre dentro del gesto del usuario
+      const pacId = document.getElementById('paciente_id').value;
+      const id = await guardarConsentimiento(false);
+      if (!id) { if (win) win.close(); return; }
+      const { data: pac } = await supabaseClient.from('pacientes').select('nombre,apellido,telefono,email').eq('id', pacId).single();
+      const url = urlWhatsApp(pac, id);
+      if (win) win.location.href = url; else window.location.href = url;
+      clearForm();
+      await load();
+    });
 
     (async () => {
       const s = await initLayout('consentimientos');
