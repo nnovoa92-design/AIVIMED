@@ -41,10 +41,10 @@ const ESTADOS_TURNO = {
 };
 
 const ESTADOS_COTIZACION = {
-  borrador:  { label: 'Borrador',  badge: 'badge-gray' },
-  enviada:   { label: 'Enviada',   badge: 'badge-blue' },
-  aprobada:  { label: 'Aprobada',  badge: 'badge-green' },
-  rechazada: { label: 'Rechazada', badge: 'badge-red' },
+  borrador:  { label: 'Por enviar', badge: 'badge-yellow' },
+  enviada:   { label: 'Enviada',    badge: 'badge-blue' },
+  aprobada:  { label: 'Aprobada',   badge: 'badge-green' },
+  rechazada: { label: 'Rechazada',  badge: 'badge-red' },
 };
 
 function fmtNumero(prefijo, numero) {

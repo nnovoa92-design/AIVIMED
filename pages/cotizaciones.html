@@ -75,12 +75,9 @@
               </div>
               <div class="form-group">
                 <label>Estado</label>
-                <select id="estado">
-                  <option value="borrador">Borrador</option>
-                  <option value="enviada">Enviada</option>
-                  <option value="aprobada">Aprobada</option>
-                  <option value="rechazada">Rechazada</option>
-                </select>
+                <div id="estado-display" style="padding:0.55rem 0;font-size:0.9rem;">
+                  <span class="badge badge-yellow">Por enviar</span>
+                </div>
               </div>
               <div class="form-group">
                 <label>IVA (19%)</label>
@@ -306,7 +303,7 @@
     function clearForm() {
       document.getElementById('cot-id').value = '';
       document.getElementById('paciente_id').value = '';
-      document.getElementById('estado').value = 'borrador';
+      document.getElementById('estado-display').innerHTML = '<span class="badge badge-yellow">Por enviar</span>';
       document.getElementById('con_iva').checked = false;
       document.getElementById('notas').value = '';
       items = [];
@@ -322,7 +319,8 @@
       if (!cot) return;
       document.getElementById('cot-id').value = cot.id;
       document.getElementById('paciente_id').value = cot.paciente_id;
-      document.getElementById('estado').value = cot.estado;
+      document.getElementById('estado-display').innerHTML = badgeEstado(cot.estado, ESTADOS_COTIZACION)
+        + ' <span style="font-size:0.78rem;color:var(--color-text-muted);">(al guardar cambios vuelve a “Por enviar”)</span>';
       document.getElementById('con_iva').checked = !!cot.con_iva;
       document.getElementById('notas').value = cot.notas || '';
 
@@ -352,7 +350,7 @@
       const id = document.getElementById('cot-id').value;
       const payloadCot = {
         paciente_id: pacienteId,
-        estado: document.getElementById('estado').value,
+        estado: 'borrador', // nueva o editada => "Por enviar" (debe (re)enviarse)
         con_iva: document.getElementById('con_iva').checked,
         notas: document.getElementById('notas').value || null,
       };
@@ -447,6 +445,14 @@
         + `¡Gracias por confiar en AIVIMED — Salud Integral! 🦋`;
     }
 
+    // Marca la cotización como "Enviada" si estaba "Por enviar"
+    async function marcarEnviada(c) {
+      if (c.estado === 'borrador') {
+        await supabaseClient.from('cotizaciones').update({ estado: 'enviada' }).eq('id', c.id);
+        await loadCotizaciones();
+      }
+    }
+
     function compartirWhatsApp(id) {
       const c = cotsCache.find(x => x.id === id);
       if (!c) return;
@@ -456,6 +462,7 @@
       const url = `${base}?text=${encodeURIComponent(mensajeCotizacion(c))}`;
       let w = null; try { w = window.open(url, '_blank'); } catch(e) {}
       if (!w) window.location.href = url;
+      marcarEnviada(c);
     }
 
     function compartirCorreo(id) {
@@ -467,6 +474,7 @@
       const url = 'https://mail.google.com/mail/?' + p.toString();
       let w = null; try { w = window.open(url, '_blank'); } catch(e) {}
       if (!w) window.location.href = url;
+      marcarEnviada(c);
     }
 
     async function loadCotizaciones() {
