@@ -176,6 +176,23 @@
     let pacientesCache = [];
     let cotsCache = [];
     let items = []; // { servicio_id, descripcion, cantidad, precio_unitario }
+    let logoDataUrl = null; // logo precargado como data URI para el PDF
+
+    // Precarga el logo como data URI (evita PDF en blanco por carga asíncrona / CORS)
+    async function precargarLogo() {
+      try {
+        const resp = await fetch('../assets/img/logo.png');
+        const blob = await resp.blob();
+        logoDataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } catch (e) {
+        logoDataUrl = null; // si falla, el PDF se genera sin logo
+      }
+    }
 
     function fmt(n) { return fmtMoneda(n); }
 
@@ -395,9 +412,14 @@
       const total = (its || []).reduce((s, it) => s + it.cantidad * it.precio_unitario, 0);
       const pacienteNombre = cot.pacientes ? `${cot.pacientes.nombre} ${cot.pacientes.apellido}` : '–';
 
-      document.getElementById('print-area').innerHTML = `
+      const logoTag = logoDataUrl
+        ? `<img src="${logoDataUrl}" alt="AIVIMED" style="width:64px;height:auto;border-radius:8px;" />`
+        : '';
+
+      const el = document.getElementById('print-area');
+      el.innerHTML = `
         <div class="pdf-header">
-          <img src="../assets/img/logo.png" alt="AIVIMED" onerror="this.style.display='none'" />
+          ${logoTag}
           <div>
             <div style="font-size:1.3rem;font-weight:700;color:#2d7558;">AIVIMED</div>
             <div style="font-size:0.85rem;color:#7a8a86;">Salud Integral</div>
@@ -415,17 +437,24 @@
         ${cot.notas ? `<p><strong>Notas:</strong> ${cot.notas}</p>` : ''}
       `;
 
-      const el = document.getElementById('print-area');
-      el.style.cssText = 'display:block; position:absolute; left:-9999px; top:0; width:800px; background:#fff; padding:24px;';
-      html2pdf().set({
-        margin: 10,
-        filename: `${fmtNumero('COT', cot.numero)}_${pacienteNombre}.pdf`,
-        image: { type: 'jpeg', quality: 0.96 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      }).from(el).save().then(() => {
+      // Render visible-pero-detrás para que html2canvas lo capture bien (no usar display:none ni left:-9999px)
+      el.style.cssText = 'display:block; position:fixed; left:0; top:0; width:800px; background:#fff; padding:24px; z-index:-1; color:#1a2320;';
+
+      // Esperar un frame para que el navegador termine el layout
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      try {
+        await html2pdf().set({
+          margin: 10,
+          filename: `${fmtNumero('COT', cot.numero)}_${pacienteNombre}.pdf`,
+          image: { type: 'jpeg', quality: 0.96 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        }).from(el).save();
+      } finally {
         el.style.cssText = '';
-      });
+        el.innerHTML = '';
+      }
     }
 
     // ─── Modal nuevo paciente ───
@@ -483,6 +512,8 @@
 
       pacientesCache = pacientes || [];
       serviciosCache = servicios || [];
+
+      precargarLogo(); // en segundo plano, listo para cuando se genere un PDF
 
       const selPac = document.getElementById('paciente_id');
       pacientesCache.forEach(p => selPac.add(new Option(`${p.apellido}, ${p.nombre}`, p.id)));
