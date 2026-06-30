@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Firmar consentimiento — AIVIMED</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@400;500;600;700&display=swap" />
+  <style>
+    :root{ --primary:#439974;--primary-dark:#2d7558;--accent:#c5a44e;--text:#1a2320;--muted:#7a8a86;--border:#e4dfe8;--bg:#f0f2f1;--danger:#c0524a;--radius:14px; }
+    *{box-sizing:border-box;}
+    body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);}
+    .wrap{max-width:620px;margin:0 auto;padding:1rem;}
+    .head{text-align:center;padding:1.5rem 0 1rem;}
+    .head img{width:84px;border-radius:12px;}
+    .head .brand{font-family:'Cinzel Decorative',serif;font-size:1.4rem;color:var(--primary-dark);letter-spacing:.05em;margin-top:.4rem;}
+    .head .sub{font-family:'Playfair Display',serif;font-style:italic;color:var(--accent);font-size:.9rem;}
+    .card{background:#fff;border-radius:var(--radius);box-shadow:0 4px 16px rgba(67,153,116,.1);padding:1.5rem;margin-bottom:1rem;}
+    .texto{font-size:.9rem;line-height:1.6;max-height:46vh;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:1rem;background:#fafbfb;}
+    label{display:block;font-size:.8rem;color:var(--muted);margin:.75rem 0 .25rem;}
+    input{width:100%;font-family:inherit;font-size:.95rem;padding:.6rem .7rem;border:1.5px solid var(--border);border-radius:var(--radius);}
+    .firma-wrap{border:1.5px dashed var(--border);border-radius:var(--radius);background:#fff;position:relative;margin-top:.25rem;}
+    .firma-wrap canvas{display:block;width:100%;height:170px;touch-action:none;cursor:crosshair;}
+    .firma-ph{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--muted);font-size:.85rem;pointer-events:none;}
+    button{font-family:inherit;font-size:.95rem;font-weight:600;padding:.8rem 1rem;border-radius:var(--radius);border:none;cursor:pointer;}
+    .b-firmar{background:var(--primary);color:#fff;width:100%;margin-top:1rem;}
+    .b-limpiar{background:#fff;color:var(--primary-dark);border:1.5px solid var(--primary);font-size:.8rem;padding:.4rem .7rem;margin-top:.4rem;}
+    .err{color:var(--danger);font-size:.85rem;margin-top:.5rem;}
+    .ok-msg{text-align:center;padding:2rem 1rem;}
+    .ok-msg .check{font-size:2.5rem;}
+    .muted{color:var(--muted);text-align:center;padding:2rem;}
+    .footer{text-align:center;font-size:.75rem;color:var(--muted);padding:1.5rem 0;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <img src="assets/img/logo.png" alt="AIVIMED" onerror="this.style.display='none'" />
+      <div class="brand">AIVIMED</div>
+      <div class="sub">Salud Integral</div>
+    </div>
+    <div id="contenido"><div class="muted">Cargando consentimiento…</div></div>
+    <div class="footer">AIVIMED · Aníbal Pinto 531, Of. 65, Concepción</div>
+  </div>
+
+  <script src="assets/vendor/supabase.min.js"></script>
+  <script>
+    const sb = supabase.createClient(
+      'https://qaeeqdfolgjobwxdpojd.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhZWVxZGZvbGdqb2J3eGRwb2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjUxMDQsImV4cCI6MjA5NjcwMTEwNH0.HgGiUKN38A-anizmwPZOLftFBZXsyG862ibF2LwnRAs',
+      { db: { schema: 'bienestar' } }
+    );
+    const cId = new URLSearchParams(location.search).get('c');
+    const cont = document.getElementById('contenido');
+    let consent = null, canvas, ctx, drawing = false, firmado = false;
+
+    async function cargar() {
+      if (!cId) { cont.innerHTML = '<div class="muted">Enlace inválido.</div>'; return; }
+      const { data, error } = await sb.rpc('obtener_consentimiento_publico', { p_id: cId });
+      if (error || !data) { cont.innerHTML = '<div class="muted">No se encontró el consentimiento. Verifica el enlace.</div>'; return; }
+      consent = data;
+      render();
+    }
+
+    function render() {
+      if (consent.firmado) {
+        cont.innerHTML = `<div class="card ok-msg"><div class="check">✅</div>
+          <p>Este consentimiento ya fue firmado${consent.firmado_en ? ' el ' + new Date(consent.firmado_en).toLocaleString('es-CL') : ''}.<br>¡Gracias!</p></div>`;
+        return;
+      }
+      cont.innerHTML = `
+        <div class="card">
+          <h2 style="margin-top:0;color:var(--primary-dark);font-size:1.15rem;">Consentimiento informado${consent.servicio ? ' — ' + consent.servicio : ''}</h2>
+          <div class="texto">${consent.texto || ''}</div>
+          <label>Nombre de quien firma</label>
+          <input id="f-nombre" value="${consent.nombre_firmante || (consent.paciente ? consent.paciente.nombre + ' ' + consent.paciente.apellido : '')}" />
+          <label>RUT</label>
+          <input id="f-rut" value="${consent.rut_firmante || ''}" placeholder="12.345.678-9" />
+          <label>Firma</label>
+          <div class="firma-wrap"><canvas id="firma"></canvas><div class="firma-ph" id="firma-ph">Firma aquí con el dedo o el mouse</div></div>
+          <button type="button" class="b-limpiar" id="b-limpiar">Limpiar firma</button>
+          <button type="button" class="b-firmar" id="b-firmar">Acepto y firmo el consentimiento</button>
+          <p class="err" id="err"></p>
+        </div>`;
+      initCanvas();
+      document.getElementById('b-limpiar').addEventListener('click', limpiar);
+      document.getElementById('b-firmar').addEventListener('click', enviar);
+    }
+
+    function initCanvas() {
+      canvas = document.getElementById('firma');
+      ctx = canvas.getContext('2d');
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width; canvas.height = 170;
+      ctx.strokeStyle = '#1a2320'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      const pos = e => { const r = canvas.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return { x:t.clientX-r.left, y:t.clientY-r.top }; };
+      const start = e => { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); };
+      const move = e => { if(!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); firmado = true; document.getElementById('firma-ph').style.display='none'; };
+      const end = () => drawing = false;
+      canvas.addEventListener('mousedown',start); canvas.addEventListener('mousemove',move); canvas.addEventListener('mouseup',end); canvas.addEventListener('mouseleave',end);
+      canvas.addEventListener('touchstart',start); canvas.addEventListener('touchmove',move); canvas.addEventListener('touchend',end);
+    }
+    function limpiar() { ctx.clearRect(0,0,canvas.width,canvas.height); firmado = false; document.getElementById('firma-ph').style.display='block'; }
+
+    async function enviar() {
+      const err = document.getElementById('err');
+      err.textContent = '';
+      if (!firmado) { err.textContent = 'Por favor firma antes de continuar.'; return; }
+      const firma = canvas.toDataURL('image/png');
+      const nombre = document.getElementById('f-nombre').value.trim();
+      const rut = document.getElementById('f-rut').value.trim();
+      const { error } = await sb.rpc('firmar_consentimiento', { p_id: cId, p_firma: firma, p_nombre: nombre, p_rut: rut });
+      if (error) { err.textContent = 'Error: ' + error.message; return; }
+      cont.innerHTML = '<div class="card ok-msg"><div class="check">✅</div><p>¡Listo! Tu consentimiento quedó firmado y registrado.<br>Te esperamos en AIVIMED.</p></div>';
+    }
+
+    cargar();
+  </script>
+</body>
+</html>

@@ -44,6 +44,10 @@
                 Requiere consentimiento informado
               </label>
             </div>
+            <div class="form-group">
+              <label>Plantilla de consentimiento (opcional)</label>
+              <textarea id="consentimiento_template" rows="4" placeholder="Texto específico de consentimiento para este procedimiento. Puedes usar {nombre}, {rut}, {procedimiento} y {fecha}. Si lo dejas vacío, se genera un texto estándar con los riesgos del procedimiento."></textarea>
+            </div>
             <button type="submit" id="submit-btn">Guardar servicio</button>
             <button type="button" id="cancel-btn" class="btn-secondary" style="display:none;">Cancelar</button>
             <p class="error-message" id="form-error"></p>
@@ -89,7 +93,7 @@
     };
 
     const clearForm = () => {
-      ['servicio-id','nombre','categoria_id','duracion_min','precio','descripcion'].forEach(f => {
+      ['servicio-id','nombre','categoria_id','duracion_min','precio','descripcion','consentimiento_template'].forEach(f => {
         const el = document.getElementById(f); if (el) el.value = '';
       });
       document.getElementById('requiere_consentimiento').checked = false;
@@ -106,6 +110,7 @@
       document.getElementById('duracion_min').value = s.duracion_min ?? '';
       document.getElementById('precio').value = s.precio ?? '';
       document.getElementById('descripcion').value = s.descripcion ?? '';
+      document.getElementById('consentimiento_template').value = s.consentimiento_template ?? '';
       document.getElementById('requiere_consentimiento').checked = !!s.requiere_consentimiento;
       document.getElementById('form-title').textContent = `Editar: ${s.nombre}`;
       document.getElementById('submit-btn').textContent = 'Actualizar';
@@ -170,6 +175,7 @@
         duracion_min: document.getElementById('duracion_min').value || null,
         precio: document.getElementById('precio').value || null,
         descripcion: document.getElementById('descripcion').value || null,
+        consentimiento_template: document.getElementById('consentimiento_template').value || null,
         requiere_consentimiento: document.getElementById('requiere_consentimiento').checked,
       };
       const { error } = id

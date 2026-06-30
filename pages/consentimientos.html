@@ -99,9 +99,13 @@
               <button type="button" id="limpiar-firma" class="btn-secondary btn-sm" style="margin-top:0.35rem;">Limpiar firma</button>
             </div>
 
-            <button type="submit" id="submit-btn">Guardar consentimiento firmado</button>
+            <button type="submit" id="submit-btn">Guardar firmado (en sala)</button>
+            <button type="button" id="enviar-btn" style="background:#25d366;border-color:#25d366;">Guardar y enviar para firmar</button>
             <button type="button" id="cancel-btn" class="btn-secondary" style="display:none;">Cancelar</button>
             <p class="error-message" id="form-error"></p>
+            <p style="font-size:0.8rem;color:var(--color-text-muted);margin-top:0.5rem;">
+              “Guardar firmado” requiere que el paciente firme aquí. “Guardar y enviar para firmar” crea el consentimiento pendiente y te deja compartir el enlace por WhatsApp o correo para que firme desde su celular.
+            </p>
           </form>
         </div>
 
@@ -135,25 +139,52 @@
     let consentsCache = [];
     let serviciosCache = [];
 
-    // ─── Textos de consentimiento por servicio ───
+    // ─── Riesgos específicos por tipo de procedimiento ───
+    function riesgosDe(nombreServicio) {
+      const n = (nombreServicio || '').toLowerCase();
+      if (/botox|toxina|botul/.test(n)) return 'dolor o hematoma en el sitio de punción, asimetría temporal, caída palpebral (ptosis) transitoria, cefalea, y en casos poco frecuentes, debilidad muscular localizada.';
+      if (/hialur|relleno|rinomodel|armoniz|labio|surco/.test(n)) return 'inflamación, hematomas, sensibilidad, nódulos o irregularidades palpables, reacción de hipersensibilidad y, de manera excepcional, compromiso vascular que requiera atención inmediata.';
+      if (/hilo/.test(n)) return 'hematomas, molestias a la palpación, extrusión o visibilidad del hilo, asimetría y leve dolor en los días posteriores.';
+      if (/mesoterap|suero|vitamin|ortomolec|prp|plasma/.test(n)) return 'dolor, enrojecimiento o flebitis en el sitio de punción, hematomas, mareos y, en casos poco frecuentes, reacción alérgica.';
+      if (/hidrolipo|lipolit|reduct|cavita|radiofrec/.test(n)) return 'dolor, edema, hematomas, irregularidades transitorias del contorno corporal y enrojecimiento de la zona tratada.';
+      if (/láser|laser|depila/.test(n)) return 'enrojecimiento, sensación de calor, quemaduras superficiales, costras y cambios temporales de pigmentación de la piel.';
+      if (/limpieza|facial|peeling|dermapen|glow|micro/.test(n)) return 'enrojecimiento, descamación, sensibilidad y leve irritación de la piel en los días posteriores.';
+      return 'enrojecimiento, inflamación, hematomas, dolor leve y sensibilidad temporal en la zona tratada, u otros propios del procedimiento.';
+    }
+
+    // ─── Texto de consentimiento: plantilla del servicio o estándar con riesgos ───
     function generarTexto(servicio, paciente) {
+      const sobj = (servicio && typeof servicio === 'object') ? servicio : { nombre: servicio };
+      const nombreSrv = sobj.nombre || '________________';
       const nombre = paciente ? `${paciente.nombre} ${paciente.apellido}` : '________________';
       const rut = paciente?.dni || '________________';
+      const fecha = new Date().toLocaleDateString('es-CL');
+
+      // Si el servicio tiene plantilla propia, se usa con reemplazo de variables
+      if (sobj.consentimiento_template) {
+        return sobj.consentimiento_template
+          .replace(/\{nombre\}/g, nombre)
+          .replace(/\{rut\}/g, rut)
+          .replace(/\{procedimiento\}/g, nombreSrv)
+          .replace(/\{fecha\}/g, fecha)
+          .replace(/\n/g, '<br/>');
+      }
+
       return `<h3 style="text-align:center;">CONSENTIMIENTO INFORMADO</h3>
 <p style="text-align:center;"><strong>AIVIMED — Salud Integral</strong></p>
-<p style="text-align:center;">Procedimiento: <strong>${servicio || '________________'}</strong></p>
+<p style="text-align:center;">Procedimiento: <strong>${nombreSrv}</strong></p>
 <hr/>
 <p>Yo, <strong>${nombre}</strong>, RUT <strong>${rut}</strong>, en pleno uso de mis facultades mentales y de manera voluntaria, declaro que:</p>
 <ol>
-<li>He sido informado/a sobre el procedimiento de <strong>${servicio || '________________'}</strong>, incluyendo su naturaleza, objetivos, beneficios esperados, riesgos posibles, alternativas y contraindicaciones.</li>
+<li>He sido informado/a sobre el procedimiento de <strong>${nombreSrv}</strong>, incluyendo su naturaleza, objetivos, beneficios esperados, riesgos posibles, alternativas y contraindicaciones.</li>
 <li>He tenido la oportunidad de realizar todas las preguntas que consideré necesarias, las cuales han sido respondidas a mi satisfacción por el profesional tratante.</li>
 <li>Comprendo que los resultados pueden variar según las características individuales de cada paciente y que no se garantizan resultados específicos.</li>
-<li>Conozco los posibles efectos secundarios, que pueden incluir: enrojecimiento, inflamación, hematomas, dolor leve, sensibilidad temporal en la zona tratada u otros propios del procedimiento.</li>
+<li>Conozco los posibles efectos secundarios de este procedimiento, que pueden incluir: ${riesgosDe(nombreSrv)}</li>
 <li>Me comprometo a seguir las indicaciones pre y post procedimiento entregadas por el profesional.</li>
 <li>Declaro no haber omitido información relevante sobre mi estado de salud, alergias, medicamentos en uso, embarazo o cualquier condición que pueda afectar el procedimiento.</li>
 </ol>
 <p>En consecuencia, <strong>autorizo</strong> la realización del procedimiento mencionado, aceptando los riesgos inherentes al mismo.</p>
-<p style="margin-top:2rem;">Fecha: ${new Date().toLocaleDateString('es-CL')}</p>`;
+<p style="margin-top:2rem;">Fecha: ${fecha}</p>`;
     }
 
     // ─── Canvas de firma ───
@@ -210,7 +241,7 @@
         }
       }
       if (srv) {
-        document.getElementById('consent-preview').innerHTML = generarTexto(srv.nombre, pac);
+        document.getElementById('consent-preview').innerHTML = generarTexto(srv, pac);
       }
     }
 
@@ -221,18 +252,28 @@
     function renderConsents(list) {
       const tbody = document.getElementById('consents-body');
       if (!list.length) { tbody.innerHTML = '<tr><td colspan="6">Sin consentimientos registrados.</td></tr>'; return; }
-      tbody.innerHTML = list.map(c => `<tr>
+      tbody.innerHTML = list.map(c => {
+        const estado = c.firmado
+          ? `<span class="badge badge-green">Firmado</span>${c.firmado_en ? `<br><span style="font-size:0.72rem;color:var(--color-text-muted);">${fmtFechaHora(c.firmado_en)}</span>` : ''}`
+          : '<span class="badge badge-yellow">Pendiente de firma</span>';
+        return `<tr>
         <td>${fmtFechaHora(c.fecha)}</td>
         <td>${c.pacientes ? `${c.pacientes.nombre} ${c.pacientes.apellido}` : '–'}</td>
         <td>${c.servicios?.nombre ?? '–'}</td>
         <td>${c.nombre_firmante || '–'}</td>
-        <td>${c.firmado ? '<span class="badge badge-green">Firmado</span>' : '<span class="badge badge-yellow">Pendiente</span>'}</td>
-        <td>
+        <td>${estado}</td>
+        <td style="white-space:nowrap;">
+          ${!c.firmado ? `<button class="btn-sm share-btn" data-id="${c.id}" style="background:#25d366;border-color:#25d366;">Enviar a firmar</button>` : ''}
           <button class="btn-secondary btn-sm print-btn" data-id="${c.id}">Imprimir</button>
           <button class="btn-danger btn-sm del-btn" data-id="${c.id}">Eliminar</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+      }).join('');
 
+      tbody.querySelectorAll('.share-btn').forEach(b => b.addEventListener('click', () => {
+        const c = consentsCache.find(x => x.id === b.dataset.id);
+        abrirCompartir(c.id, c.pacientes);
+      }));
       tbody.querySelectorAll('.print-btn').forEach(b => b.addEventListener('click', () => printConsent(b.dataset.id)));
       tbody.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', async () => {
         if (!confirm('¿Eliminar este consentimiento?')) return;
@@ -259,7 +300,7 @@
     async function load() {
       const pacId = document.getElementById('filter-paciente').value;
       let q = supabaseClient.from('consentimientos')
-        .select('*, pacientes(nombre,apellido), servicios(nombre)')
+        .select('*, pacientes(nombre,apellido,telefono,email), servicios(nombre)')
         .order('fecha', { ascending: false }).limit(100);
       if (pacId) q = q.eq('paciente_id', pacId);
       const { data } = await q;
@@ -282,34 +323,74 @@
 
     document.getElementById('cancel-btn').addEventListener('click', clearForm);
 
-    document.getElementById('consent-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
+    async function guardarConsentimiento(firmar) {
       const errorEl = document.getElementById('form-error');
       errorEl.textContent = '';
 
       const pacienteId = document.getElementById('paciente_id').value;
       const servicioId = document.getElementById('servicio_id').value;
-      if (!pacienteId || !servicioId) { errorEl.textContent = 'Selecciona paciente y servicio.'; return; }
-      if (!hasSignature) { errorEl.textContent = 'El paciente debe firmar antes de guardar.'; return; }
-
-      const firmaData = canvas.toDataURL('image/png');
-      const textoConsentimiento = document.getElementById('consent-preview').innerHTML;
+      if (!pacienteId || !servicioId) { errorEl.textContent = 'Selecciona paciente y servicio.'; return null; }
+      if (firmar && !hasSignature) { errorEl.textContent = 'El paciente debe firmar antes de guardar.'; return null; }
 
       const payload = {
         paciente_id: pacienteId,
         servicio_id: servicioId,
-        texto_consentimiento: textoConsentimiento,
-        firma_data: firmaData,
-        firmado: true,
+        texto_consentimiento: document.getElementById('consent-preview').innerHTML,
+        firma_data: firmar ? canvas.toDataURL('image/png') : null,
+        firmado: !!firmar,
+        firmado_en: firmar ? new Date().toISOString() : null,
         nombre_firmante: document.getElementById('nombre_firmante').value || null,
         rut_firmante: document.getElementById('rut_firmante').value || null,
       };
 
-      const { error } = await supabaseClient.from('consentimientos').insert(payload);
-      if (error) { errorEl.textContent = error.message; return; }
+      const { data, error } = await supabaseClient.from('consentimientos').insert(payload).select('id').single();
+      if (error) { errorEl.textContent = error.message; return null; }
+      return data.id;
+    }
+
+    // Firmado en sala
+    document.getElementById('consent-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = await guardarConsentimiento(true);
+      if (!id) return;
       clearForm();
       await load();
     });
+
+    // Guardar pendiente y compartir para firma remota
+    document.getElementById('enviar-btn').addEventListener('click', async () => {
+      const pacId = document.getElementById('paciente_id').value;
+      const id = await guardarConsentimiento(false);
+      if (!id) return;
+      const { data: pac } = await supabaseClient.from('pacientes').select('nombre,apellido,telefono,email').eq('id', pacId).single();
+      clearForm();
+      await load();
+      abrirCompartir(id, pac);
+    });
+
+    // ─── Compartir enlace de firma ───
+    function linkFirma(id) { return `${location.origin}/firmar-consentimiento.html?c=${id}`; }
+    function mensajeFirma(pac, id) {
+      const nombre = pac ? pac.nombre : '';
+      return `Hola ${nombre}! 👋\n\nAntes de tu atención en AIVIMED, por favor lee y firma tu consentimiento informado desde este enlace (puedes hacerlo desde el celular):\n${linkFirma(id)}\n\n¡Gracias! 🦋`;
+    }
+    let compartirCtx = null;
+    function abrirCompartir(id, pac) {
+      compartirCtx = { id, pac };
+      const tel = (pac?.telefono || '').replace(/\D/g, '');
+      const opciones = `Consentimiento creado como pendiente.\n\nAceptar = abrir WhatsApp. Cancelar = abrir correo.`;
+      if (confirm(opciones)) {
+        let t = tel; if (t && t.length === 9 && t.startsWith('9')) t = '56' + t;
+        const url = `https://wa.me/${t}?text=${encodeURIComponent(mensajeFirma(pac, id))}`;
+        let w=null; try{ w=window.open(url,'_blank'); }catch(e){}
+        if(!w) window.location.href = url;
+      } else {
+        const p = new URLSearchParams({ view:'cm', fs:'1', to: pac?.email || '', su: 'Consentimiento informado — AIVIMED', body: mensajeFirma(pac, id) });
+        const url = 'https://mail.google.com/mail/?' + p.toString();
+        let w=null; try{ w=window.open(url,'_blank'); }catch(e){}
+        if(!w) window.location.href = url;
+      }
+    }
 
     (async () => {
       const s = await initLayout('consentimientos');
@@ -317,7 +398,7 @@
 
       const [{ data: pacientes }, { data: servicios }] = await Promise.all([
         supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo', true).order('apellido'),
-        supabaseClient.from('servicios').select('id,nombre,requiere_consentimiento').eq('activo', true).order('nombre'),
+        supabaseClient.from('servicios').select('id,nombre,requiere_consentimiento,consentimiento_template').eq('activo', true).order('nombre'),
       ]);
 
       serviciosCache = servicios || [];
