@@ -433,9 +433,13 @@
       tbody.querySelectorAll('.mail-btn').forEach(b => b.addEventListener('click', () => compartirCorreo(b.dataset.id)));
     }
 
-    // Enlace público de respuesta de la cotización (mismo dominio que la app)
+    // Enlace público de respuesta de la cotización. Usa el dominio actual si es web;
+    // si se abre como archivo local (file://) cae al sitio publicado.
+    const SITE_BASE = (location.protocol === 'http:' || location.protocol === 'https:')
+      ? location.origin
+      : 'https://aivimed.nnovoa92.workers.dev';
     function linkRespuesta(id) {
-      return `${location.origin}/respuesta.html?cot=${id}`;
+      return `${SITE_BASE}/respuesta.html?cot=${id}`;
     }
 
     function mensajeCotizacion(c) {

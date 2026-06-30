@@ -432,7 +432,12 @@
     });
 
     // ─── Compartir enlace de firma ───
-    function linkFirma(id) { return `${location.origin}/firmar-consentimiento.html?c=${id}`; }
+    // Base pública del sitio: usa el dominio actual si es web; si se abre como
+    // archivo local (file://) cae al sitio publicado para que el enlace funcione.
+    const SITE_BASE = (location.protocol === 'http:' || location.protocol === 'https:')
+      ? location.origin
+      : 'https://aivimed.nnovoa92.workers.dev';
+    function linkFirma(id) { return `${SITE_BASE}/firmar-consentimiento.html?c=${id}`; }
     function mensajeFirma(pac, id) {
       const nombre = pac ? pac.nombre : '';
       return `Hola ${nombre}! 👋\n\nAntes de tu atención en AIVIMED, por favor lee y firma tu consentimiento informado desde este enlace (puedes hacerlo desde el celular):\n${linkFirma(id)}\n\n¡Gracias! 🦋`;
