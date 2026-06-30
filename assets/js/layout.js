@@ -13,10 +13,31 @@ const NAV_ITEMS = [
   { section: 'Administración' },
   { key: 'pagos',          icon: '$',  label: 'Pagos',             href: 'pagos.html' },
   { key: 'reportes',       icon: '◎',  label: 'Torre de Control',  href: 'reportes.html' },
+  { key: 'configuracion',  icon: '⚙',  label: 'Configuración',     href: 'configuracion.html' },
 ];
 
-// IVA Chile
-const IVA_PCT = 19;
+// IVA Chile (default; se sobrescribe con el valor de la tabla config al llamar getConfig)
+let IVA_PCT = 19;
+
+// Configuración del centro (datos empresa + operacional), cacheada
+let CONFIG_DEFAULT = {
+  razon_social: 'AIVIMED', rut: '78.217.799-0',
+  direccion: 'Aníbal Pinto 531, Of. 65, Concepción', correo: 'aivimed.salud@gmail.com',
+  telefono: '', instagram: '', iva_pct: 19, politica_cotizacion: '',
+  hora_apertura: '09:30', hora_cierre: '19:30', sab_apertura: '10:00', sab_cierre: '14:00',
+};
+let _configCache = null;
+async function getConfig() {
+  if (_configCache) return _configCache;
+  try {
+    const { data } = await supabaseClient.from('config').select('*').eq('id', 1).single();
+    _configCache = Object.assign({}, CONFIG_DEFAULT, data || {});
+  } catch (e) {
+    _configCache = Object.assign({}, CONFIG_DEFAULT);
+  }
+  IVA_PCT = Number(_configCache.iva_pct) || 19;
+  return _configCache;
+}
 
 const METODOS_PAGO = {
   efectivo:        'Efectivo',

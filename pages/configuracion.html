@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configuración · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Configuración</h1></header>
+      <div class="content">
+
+        <!-- Datos de la empresa -->
+        <div class="card">
+          <h2 style="margin-top:0;">Datos de la empresa</h2>
+          <p style="color:var(--color-text-muted);font-size:0.82rem;margin-top:0;">Aparecen en cotizaciones, consentimientos y reportes.</p>
+          <form id="empresa-form">
+            <div class="form-row">
+              <div class="form-group"><label>Razón social / Nombre</label><input id="razon_social" /></div>
+              <div class="form-group"><label>RUT</label><input id="rut" /></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Correo</label><input type="email" id="correo" /></div>
+              <div class="form-group"><label>Teléfono / WhatsApp</label><input id="telefono" placeholder="+56 9 1234 5678" /></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Dirección</label><input id="direccion" /></div>
+              <div class="form-group"><label>Instagram</label><input id="instagram" placeholder="@aivimed" /></div>
+            </div>
+            <button type="submit">Guardar datos de la empresa</button>
+            <span class="ok-msg" id="empresa-ok" style="color:var(--color-success);font-size:0.85rem;margin-left:0.5rem;"></span>
+          </form>
+        </div>
+
+        <!-- Configuración operacional -->
+        <div class="card" style="margin-top:1rem;">
+          <h2 style="margin-top:0;">Configuración operacional</h2>
+          <form id="oper-form">
+            <div class="form-row">
+              <div class="form-group"><label>IVA (%)</label><input type="number" id="iva_pct" min="0" max="100" step="0.1" /></div>
+            </div>
+            <h3 style="font-size:0.95rem;color:var(--color-primary-dark);margin-bottom:0.5rem;">Horarios de atención</h3>
+            <div class="form-row">
+              <div class="form-group"><label>Lun a Vie — apertura</label><input type="time" id="hora_apertura" /></div>
+              <div class="form-group"><label>Lun a Vie — cierre</label><input type="time" id="hora_cierre" /></div>
+              <div class="form-group"><label>Sábado — apertura</label><input type="time" id="sab_apertura" /></div>
+              <div class="form-group"><label>Sábado — cierre</label><input type="time" id="sab_cierre" /></div>
+            </div>
+            <div class="form-group">
+              <label>Política de la empresa (aparece al pie de cada cotización)</label>
+              <textarea id="politica_cotizacion" rows="4" placeholder="Validez de la cotización, formas de pago, reprogramación, etc."></textarea>
+            </div>
+            <button type="submit">Guardar configuración</button>
+            <span class="ok-msg" id="oper-ok" style="color:var(--color-success);font-size:0.85rem;margin-left:0.5rem;"></span>
+          </form>
+        </div>
+
+        <!-- Plantillas de consentimiento -->
+        <div class="card" style="margin-top:1rem;">
+          <h2 style="margin-top:0;">Plantillas de consentimiento por servicio</h2>
+          <p style="color:var(--color-text-muted);font-size:0.82rem;margin-top:0;">
+            Edita el texto predeterminado de consentimiento de cada servicio. Variables disponibles:
+            <code>{nombre}</code>, <code>{rut}</code>, <code>{procedimiento}</code>, <code>{fecha}</code>.
+            Si lo dejas vacío, se usa el texto estándar con los riesgos del procedimiento.
+          </p>
+          <div class="form-group">
+            <label>Servicio</label>
+            <select id="srv-select"><option value="">Selecciona un servicio…</option></select>
+          </div>
+          <div class="form-group">
+            <label>Texto del consentimiento (predeterminado)</label>
+            <textarea id="srv-template" rows="10" placeholder="Selecciona un servicio para editar su plantilla…" disabled></textarea>
+          </div>
+          <button type="button" id="srv-guardar" disabled>Guardar plantilla</button>
+          <span class="ok-msg" id="srv-ok" style="color:var(--color-success);font-size:0.85rem;margin-left:0.5rem;"></span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    const EMPRESA_FIELDS = ['razon_social','rut','correo','telefono','direccion','instagram'];
+    const OPER_FIELDS = ['iva_pct','hora_apertura','hora_cierre','sab_apertura','sab_cierre','politica_cotizacion'];
+    let serviciosCache = [];
+
+    function flash(elId, msg) {
+      const el = document.getElementById(elId);
+      el.textContent = msg;
+      setTimeout(() => { el.textContent = ''; }, 2500);
+    }
+
+    // ── Empresa ──
+    document.getElementById('empresa-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = { id: 1 };
+      EMPRESA_FIELDS.forEach(f => payload[f] = document.getElementById(f).value || null);
+      const { error } = await supabaseClient.from('config').update(payload).eq('id', 1);
+      if (error) { alert('Error: ' + error.message); return; }
+      _configCache = null; // limpiar cache
+      flash('empresa-ok', '✓ Guardado');
+    });
+
+    // ── Operacional ──
+    document.getElementById('oper-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        iva_pct: document.getElementById('iva_pct').value || 19,
+        hora_apertura: document.getElementById('hora_apertura').value || null,
+        hora_cierre: document.getElementById('hora_cierre').value || null,
+        sab_apertura: document.getElementById('sab_apertura').value || null,
+        sab_cierre: document.getElementById('sab_cierre').value || null,
+        politica_cotizacion: document.getElementById('politica_cotizacion').value || null,
+      };
+      const { error } = await supabaseClient.from('config').update(payload).eq('id', 1);
+      if (error) { alert('Error: ' + error.message); return; }
+      _configCache = null;
+      flash('oper-ok', '✓ Guardado');
+    });
+
+    // ── Plantillas de consentimiento ──
+    const srvSelect = document.getElementById('srv-select');
+    const srvTemplate = document.getElementById('srv-template');
+    const srvGuardar = document.getElementById('srv-guardar');
+
+    srvSelect.addEventListener('change', () => {
+      const srv = serviciosCache.find(s => s.id === srvSelect.value);
+      if (!srv) {
+        srvTemplate.value = ''; srvTemplate.disabled = true; srvGuardar.disabled = true; return;
+      }
+      srvTemplate.value = srv.consentimiento_template || '';
+      srvTemplate.disabled = false;
+      srvGuardar.disabled = false;
+    });
+
+    srvGuardar.addEventListener('click', async () => {
+      const id = srvSelect.value;
+      if (!id) return;
+      const texto = srvTemplate.value || null;
+      const { error } = await supabaseClient.from('servicios').update({ consentimiento_template: texto }).eq('id', id);
+      if (error) { alert('Error: ' + error.message); return; }
+      const srv = serviciosCache.find(s => s.id === id);
+      if (srv) srv.consentimiento_template = texto;
+      flash('srv-ok', '✓ Plantilla guardada');
+    });
+
+    (async () => {
+      const s = await initLayout('configuracion');
+      if (!s) return;
+
+      const cfg = await getConfig();
+      EMPRESA_FIELDS.forEach(f => { const el = document.getElementById(f); if (el) el.value = cfg[f] ?? ''; });
+      document.getElementById('iva_pct').value = cfg.iva_pct ?? 19;
+      document.getElementById('hora_apertura').value = cfg.hora_apertura ?? '';
+      document.getElementById('hora_cierre').value = cfg.hora_cierre ?? '';
+      document.getElementById('sab_apertura').value = cfg.sab_apertura ?? '';
+      document.getElementById('sab_cierre').value = cfg.sab_cierre ?? '';
+      document.getElementById('politica_cotizacion').value = cfg.politica_cotizacion ?? '';
+
+      const { data: servicios } = await supabaseClient.from('servicios')
+        .select('id,nombre,consentimiento_template,requiere_consentimiento')
+        .eq('activo', true).order('nombre');
+      serviciosCache = servicios || [];
+      // primero los que requieren consentimiento
+      const orden = serviciosCache.slice().sort((a,b) => (b.requiere_consentimiento?1:0) - (a.requiere_consentimiento?1:0));
+      orden.forEach(sv => srvSelect.add(new Option((sv.requiere_consentimiento ? '★ ' : '') + sv.nombre, sv.id)));
+    })();
+  </script>
+</body>
+</html>

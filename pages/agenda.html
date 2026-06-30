@@ -120,10 +120,15 @@
   <script src="../assets/js/supabaseClient.js"></script>
   <script src="../assets/js/layout.js"></script>
   <script>
-    const HORARIOS = {
+    // Horarios por día (1=Lun … 6=Sáb). Se reconstruyen desde Configuración en el init.
+    let HORARIOS = {
       1:{desde:'09:30',hasta:'19:30'}, 2:{desde:'09:30',hasta:'19:30'}, 3:{desde:'09:30',hasta:'19:30'},
       4:{desde:'09:30',hasta:'19:30'}, 5:{desde:'09:30',hasta:'19:30'}, 6:{desde:'10:00',hasta:'14:00'},
     };
+    function horariosDesdeConfig(cfg) {
+      const lv = { desde: cfg.hora_apertura || '09:30', hasta: cfg.hora_cierre || '19:30' };
+      HORARIOS = { 1:lv, 2:lv, 3:lv, 4:lv, 5:lv, 6:{ desde: cfg.sab_apertura || '10:00', hasta: cfg.sab_cierre || '14:00' } };
+    }
     const SLOT_MIN = 60;
     const DIAS_SEMANA = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
     const DIAS_MES_HEADER = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -396,6 +401,7 @@
 
     (async()=>{
       const s=await initLayout('agenda'); if(!s) return;
+      horariosDesdeConfig(await getConfig()); // horarios desde Configuración
       const [{data:pacientes},{data:servicios},{data:personal}]=await Promise.all([
         supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo',true).order('apellido'),
         supabaseClient.from('servicios').select('id,nombre').eq('activo',true).order('nombre'),

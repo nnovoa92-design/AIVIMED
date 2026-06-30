@@ -183,17 +183,14 @@
     let items = []; // { servicio_id, descripcion, cantidad, precio_unitario }
     let logoDataUrl = null; // logo precargado como data URI para el PDF
 
-    // Datos de la empresa para el documento de cotización
-    const EMPRESA = {
-      razon: 'AIVIMED',
-      rut: '78.217.799-0',
-      correo: 'aivimed.salud@gmail.com',
-      direccion: 'Aníbal Pinto 531, Of. 65, Concepción',
-      // Texto PROVISORIO — pendiente de definir con la empresa
-      politica: 'Esta cotización tiene una validez de 30 días corridos desde su fecha de emisión. ' +
-        'Los valores indicados están expresados en pesos chilenos (CLP) e incluyen impuestos cuando corresponda. ' +
-        'Los procedimientos se realizan previa evaluación profesional y firma de consentimiento informado cuando aplique. ' +
-        'Para reservar hora se podrá solicitar un abono. Las reprogramaciones deben avisarse con al menos 24 horas de anticipación.',
+    // Datos de la empresa para el documento de cotización (se cargan desde Configuración)
+    const POLITICA_DEFAULT = 'Esta cotización tiene una validez de 30 días corridos desde su fecha de emisión. ' +
+      'Los valores indicados están expresados en pesos chilenos (CLP) e incluyen impuestos cuando corresponda. ' +
+      'Los procedimientos se realizan previa evaluación profesional y firma de consentimiento informado cuando aplique. ' +
+      'Para reservar hora se podrá solicitar un abono. Las reprogramaciones deben avisarse con al menos 24 horas de anticipación.';
+    let EMPRESA = {
+      razon: 'AIVIMED', rut: '78.217.799-0', correo: 'aivimed.salud@gmail.com',
+      direccion: 'Aníbal Pinto 531, Of. 65, Concepción', politica: POLITICA_DEFAULT,
     };
 
     // Precarga el logo como data URI (evita PDF en blanco por carga asíncrona / CORS)
@@ -607,7 +604,7 @@
     <thead><tr><th>Servicio</th><th style="text-align:center;">Cant.</th><th style="text-align:right;">Precio unit.</th><th style="text-align:right;">Subtotal</th></tr></thead>
     <tbody>${filas || '<tr><td colspan="4">Sin ítems</td></tr>'}</tbody>
   </table>
-  ${cot.con_iva ? `<div style="text-align:right;font-size:14px;margin-top:12px;">Neto: ${fmt(neto)}<br>IVA (19%): ${fmt(iva)}</div>` : ''}
+  ${cot.con_iva ? `<div style="text-align:right;font-size:14px;margin-top:12px;">Neto: ${fmt(neto)}<br>IVA (${IVA_PCT}%): ${fmt(iva)}</div>` : ''}
   <div class="total">Total: ${fmt(total)}</div>
   ${cot.notas ? `<div class="notas"><strong>Notas:</strong> ${cot.notas}</div>` : ''}
 
@@ -674,6 +671,16 @@
     (async () => {
       const s = await initLayout('cotizaciones');
       if (!s) return;
+
+      // Cargar datos de empresa/política/IVA desde Configuración
+      const cfg = await getConfig();
+      EMPRESA = {
+        razon: cfg.razon_social || 'AIVIMED',
+        rut: cfg.rut || '',
+        correo: cfg.correo || '',
+        direccion: cfg.direccion || '',
+        politica: cfg.politica_cotizacion || POLITICA_DEFAULT,
+      };
 
       const [{ data: pacientes }, { data: servicios }] = await Promise.all([
         supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo', true).order('apellido'),

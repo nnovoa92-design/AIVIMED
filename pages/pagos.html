@@ -200,6 +200,7 @@
     (async () => {
       const s = await initLayout('pagos');
       if (!s) return;
+      await getConfig(); // ajusta IVA_PCT según configuración
 
       const { data: pacientes } = await supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo',true).order('apellido');
       const selPac = document.getElementById('paciente_id');

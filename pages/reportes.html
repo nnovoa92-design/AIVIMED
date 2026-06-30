@@ -223,6 +223,7 @@
     (async () => {
       const s = await initLayout('reportes');
       if (!s) return;
+      await getConfig(); // ajusta IVA_PCT según configuración
       const hoy = new Date();
       const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
       document.getElementById('fecha-desde').value = primerDia.toISOString().slice(0,10);
