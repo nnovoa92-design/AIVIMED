@@ -164,6 +164,15 @@
   <script>
     let consentsCache = [];
     let serviciosCache = [];
+    let logoDataUrl = null; // logo como data URI para la impresión
+
+    async function precargarLogo() {
+      try {
+        const resp = await fetch('../assets/img/logo.png');
+        const blob = await resp.blob();
+        logoDataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onloadend = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); });
+      } catch (e) { logoDataUrl = null; }
+    }
 
     // ─── Riesgos específicos por tipo de procedimiento ───
     function riesgosDe(nombreServicio) {
@@ -354,19 +363,69 @@
       }));
     }
 
+    // Descripción legible del dispositivo desde el user agent
+    function dispositivoDesc(ua) {
+      if (!ua) return null;
+      let os = 'Dispositivo';
+      if (/Android/i.test(ua)) os = 'Android';
+      else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iPhone/iPad (iOS)';
+      else if (/Windows/i.test(ua)) os = 'Windows';
+      else if (/Mac OS X|Macintosh/i.test(ua)) os = 'Mac';
+      else if (/Linux/i.test(ua)) os = 'Linux';
+      let nav = '';
+      if (/Edg\//i.test(ua)) nav = 'Edge';
+      else if (/Chrome\//i.test(ua)) nav = 'Chrome';
+      else if (/Firefox\//i.test(ua)) nav = 'Firefox';
+      else if (/Safari\//i.test(ua)) nav = 'Safari';
+      return nav ? `${os} · ${nav}` : os;
+    }
+
     function printConsent(id) {
       const c = consentsCache.find(x => x.id === id);
       if (!c) return;
-      const printArea = document.getElementById('print-area');
-      printArea.innerHTML = `
-        <div style="text-align:center;margin-bottom:1rem;">
-          <img src="../assets/img/logo.png" alt="AIVIMED" style="width:80px;border-radius:6px;" onerror="this.style.display='none'" />
-        </div>
-        ${c.texto_consentimiento}
-        ${c.firma_data ? `<div style="margin-top:1.5rem;"><p><strong>Firma:</strong></p><img src="${c.firma_data}" style="max-width:250px;border:1px solid #ccc;border-radius:4px;" /></div>` : ''}
-        <p style="margin-top:0.5rem;"><strong>Firmante:</strong> ${c.nombre_firmante || '–'} — RUT: ${c.rut_firmante || '–'}</p>
-      `;
-      window.print();
+
+      // Ventana nueva (método confiable: la firma sí se renderiza)
+      const win = window.open('', '_blank');
+      if (!win) { alert('El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes para este sitio.'); return; }
+
+      const dispositivo = dispositivoDesc(c.firma_user_agent);
+      const auditoria = c.firmado ? `
+        <div style="margin-top:24px;padding-top:12px;border-top:1px dashed #bbb;font-size:11px;color:#555;line-height:1.6;">
+          <strong>Registro de firma electrónica</strong><br>
+          Firmado el: ${c.firmado_en ? new Date(c.firmado_en).toLocaleString('es-CL') : '—'}<br>
+          ${dispositivo ? 'Dispositivo: ' + dispositivo + '<br>' : ''}
+          ${c.firma_ip ? 'Dirección IP: ' + c.firma_ip + '<br>' : ''}
+          Firmante declarado: ${c.nombre_firmante || '—'} — RUT: ${c.rut_firmante || '—'}
+        </div>` : `
+        <div style="margin-top:24px;padding-top:12px;border-top:1px dashed #bbb;font-size:12px;color:#c0524a;">
+          Consentimiento PENDIENTE de firma.
+        </div>`;
+
+      const doc = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<title>Consentimiento — ${c.pacientes ? c.pacientes.nombre + ' ' + c.pacientes.apellido : ''}</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color:#1a2320; margin:0; padding:32px; font-size:13px; line-height:1.6; }
+  .logo { text-align:center; margin-bottom:16px; }
+  .logo img { width:80px; border-radius:6px; }
+  h3 { text-align:center; }
+  .firma-box { margin-top:24px; }
+  .firma-box img { max-width:260px; border:1px solid #ccc; border-radius:4px; background:#fff; display:block; }
+  @media print { body { padding:0; } }
+</style></head>
+<body>
+  <div class="logo">${logoDataUrl ? `<img src="${logoDataUrl}" alt="AIVIMED"/>` : '<strong style="color:#2d7558;font-size:20px;">AIVIMED</strong>'}</div>
+  ${c.texto_consentimiento || ''}
+  <div class="firma-box">
+    <p><strong>Firma:</strong></p>
+    ${c.firma_data ? `<img src="${c.firma_data}" alt="Firma"/>` : '<p style="color:#c0524a;">Sin firma registrada.</p>'}
+  </div>
+  ${auditoria}
+  <script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>
+</body></html>`;
+
+      win.document.open();
+      win.document.write(doc);
+      win.document.close();
     }
 
     async function load() {
@@ -413,6 +472,7 @@
         firma_data: firmar ? canvas.toDataURL('image/png') : null,
         firmado: !!firmar,
         firmado_en: firmar ? new Date().toISOString() : null,
+        firma_user_agent: firmar ? navigator.userAgent : null,
         nombre_firmante: document.getElementById('nombre_firmante').value || null,
         rut_firmante: document.getElementById('rut_firmante').value || null,
       };
@@ -468,6 +528,7 @@
     (async () => {
       const s = await initLayout('consentimientos');
       if (!s) return;
+      precargarLogo(); // en segundo plano para la impresión
 
       const [{ data: pacientes }, { data: servicios }] = await Promise.all([
         supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo', true).order('apellido'),

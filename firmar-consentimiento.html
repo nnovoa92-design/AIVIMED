@@ -108,7 +108,7 @@
       const firma = canvas.toDataURL('image/png');
       const nombre = document.getElementById('f-nombre').value.trim();
       const rut = document.getElementById('f-rut').value.trim();
-      const { error } = await sb.rpc('firmar_consentimiento', { p_id: cId, p_firma: firma, p_nombre: nombre, p_rut: rut });
+      const { error } = await sb.rpc('firmar_consentimiento', { p_id: cId, p_firma: firma, p_nombre: nombre, p_rut: rut, p_user_agent: navigator.userAgent });
       if (error) { err.textContent = 'Error: ' + error.message; return; }
       cont.innerHTML = '<div class="card ok-msg"><div class="check">✅</div><p>¡Listo! Tu consentimiento quedó firmado y registrado.<br>Te esperamos en AIVIMED.</p></div>';
     }
