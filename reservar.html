@@ -183,8 +183,11 @@
         <div class="confirm-detail" id="confirm-detail"></div>
       </div>
 
+      <p id="notif-estado" style="text-align:center;font-size:0.82rem;color:var(--muted);margin:0.5rem 0;"></p>
+
       <div class="share-btns">
-        <a class="share-wa" id="share-wa" href="#" target="_blank">Compartir por WhatsApp</a>
+        <a class="share-wa" id="share-wa" href="#" target="_blank">Confirmar por WhatsApp</a>
+        <a class="share-ig" id="share-mail" href="#" target="_blank" style="background:#1a73e8;">Enviar por correo</a>
       </div>
 
       <button class="btn btn-outline" style="margin-top:1rem;" onclick="location.reload()">Hacer otra reserva</button>
@@ -197,6 +200,7 @@
   </div>
 
   <script src="assets/vendor/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <script>
     // Cliente público (schema bienestar, sin auth)
     const sb = supabase.createClient(
@@ -210,12 +214,15 @@
       1:{desde:'09:30',hasta:'19:30'}, 2:{desde:'09:30',hasta:'19:30'}, 3:{desde:'09:30',hasta:'19:30'},
       4:{desde:'09:30',hasta:'19:30'}, 5:{desde:'09:30',hasta:'19:30'}, 6:{desde:'10:00',hasta:'14:00'},
     };
+    let CFG = { telefono: '', correo: 'aivimed.salud@gmail.com' };
     async function cargarHorarios() {
       try {
-        const { data } = await sb.from('config').select('hora_apertura,hora_cierre,sab_apertura,sab_cierre').eq('id',1).single();
+        const { data } = await sb.from('config').select('hora_apertura,hora_cierre,sab_apertura,sab_cierre,telefono,correo').eq('id',1).single();
         if (data) {
           const lv = { desde: data.hora_apertura || '09:30', hasta: data.hora_cierre || '19:30' };
           HORARIOS = { 1:lv, 2:lv, 3:lv, 4:lv, 5:lv, 6:{ desde: data.sab_apertura || '10:00', hasta: data.sab_cierre || '14:00' } };
+          CFG.telefono = data.telefono || '';
+          CFG.correo = data.correo || 'aivimed.salud@gmail.com';
         }
       } catch (e) { /* usa los default */ }
     }
@@ -303,18 +310,21 @@
           card.classList.add('selected');
           selectedService = servicios.find(s => s.id === card.dataset.id);
           document.getElementById('btn-next-1').disabled = false;
+          irAFechaHora(); // avanza automáticamente al elegir servicio
         });
       });
     }
 
-    document.getElementById('btn-next-1').addEventListener('click', () => {
+    function irAFechaHora() {
       if (!selectedService) return;
       const now = new Date();
       calMonth = now.getMonth();
       calYear = now.getFullYear();
       renderCalendar();
       goTo(2);
-    });
+    }
+
+    document.getElementById('btn-next-1').addEventListener('click', irAFechaHora);
 
     // ─── PANEL 2: CALENDARIO + SLOTS ───
     function renderCalendar() {
@@ -480,12 +490,55 @@
         ${selectedService.precio != null ? `<div class="row"><span class="row-label">Precio</span><span>${fmtPrecio(selectedService.precio)}</span></div>` : ''}
       `;
 
-      // Link WhatsApp
-      const msgWa = `Hola AIVIMED! Reservé una hora:\n- Servicio: ${selectedService.nombre}\n- Fecha: ${fechaStr}\n- Hora: ${selectedSlot}\n- Nombre: ${nombre} ${apellido}\n- Teléfono: ${telefono}`;
-      document.getElementById('share-wa').href = `https://wa.me/?text=${encodeURIComponent(msgWa)}`;
+      // Datos de la reserva para las notificaciones
+      const reserva = { servicio: selectedService.nombre, fecha: fechaStr, hora: selectedSlot,
+        nombre, apellido, telefono, email: document.getElementById('r-email').value.trim(),
+        precio: selectedService.precio != null ? fmtPrecio(selectedService.precio) : 'Consultar' };
+
+      // WhatsApp: se envía al número de AIVIMED (si está configurado)
+      let telAivimed = (CFG.telefono || '').replace(/\D/g, '');
+      if (telAivimed && telAivimed.length === 9 && telAivimed.startsWith('9')) telAivimed = '56' + telAivimed;
+      const msgWa = `Hola AIVIMED! Reservé una hora:\n- Servicio: ${reserva.servicio}\n- Fecha: ${reserva.fecha}\n- Hora: ${reserva.hora}\n- Nombre: ${reserva.nombre} ${reserva.apellido}\n- Teléfono: ${reserva.telefono}`;
+      document.getElementById('share-wa').href = `https://wa.me/${telAivimed}?text=${encodeURIComponent(msgWa)}`;
+
+      // Correo: abre el correo del paciente hacia AIVIMED con la reserva
+      const asunto = `Reserva online — ${reserva.nombre} ${reserva.apellido}`;
+      const cuerpo = `Nueva reserva:\n\nServicio: ${reserva.servicio}\nFecha: ${reserva.fecha}\nHora: ${reserva.hora}\nPaciente: ${reserva.nombre} ${reserva.apellido}\nTeléfono: ${reserva.telefono}\nCorreo: ${reserva.email || '—'}`;
+      const mailParams = new URLSearchParams({ view:'cm', fs:'1', to: CFG.correo, su: asunto, body: cuerpo });
+      document.getElementById('share-mail').href = 'https://mail.google.com/mail/?' + mailParams.toString();
+
+      // Envío AUTOMÁTICO de correos (a AIVIMED y a la paciente) vía EmailJS, si está configurado
+      enviarCorreosAuto(reserva);
 
       goTo(4);
     });
+
+    // ── Envío automático de correos por EmailJS ──
+    // Para activarlo: completa EMAILJS_CONFIG con tus IDs (ver instrucciones).
+    const EMAILJS_CONFIG = { publicKey: '', serviceId: '', templateAivimed: '', templatePaciente: '' };
+    if (EMAILJS_CONFIG.publicKey && typeof emailjs !== 'undefined') { try { emailjs.init({ publicKey: EMAILJS_CONFIG.publicKey }); } catch(e){} }
+    function enviarCorreosAuto(r) {
+      const est = document.getElementById('notif-estado');
+      if (!EMAILJS_CONFIG.publicKey || typeof emailjs === 'undefined') {
+        est.textContent = 'Usa los botones de abajo para avisar a AIVIMED por WhatsApp o correo.';
+        return;
+      }
+      est.textContent = 'Enviando confirmación por correo…';
+      const params = {
+        servicio: r.servicio, fecha: r.fecha, hora: r.hora,
+        paciente: `${r.nombre} ${r.apellido}`, telefono: r.telefono,
+        email_paciente: r.email, email_aivimed: CFG.correo, precio: r.precio,
+      };
+      const envios = [ emailjs.send(EMAILJS_CONFIG.serviceId, EMAILJS_CONFIG.templateAivimed, params) ];
+      if (r.email && EMAILJS_CONFIG.templatePaciente) {
+        envios.push(emailjs.send(EMAILJS_CONFIG.serviceId, EMAILJS_CONFIG.templatePaciente, params));
+      }
+      Promise.allSettled(envios).then(res => {
+        est.textContent = res.some(x => x.status === 'fulfilled')
+          ? '✓ Enviamos la confirmación por correo.'
+          : 'No se pudo enviar el correo automático; usa los botones de abajo.';
+      });
+    }
 
     // Init
     cargarHorarios();
