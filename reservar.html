@@ -361,12 +361,13 @@
       const slots = getSlots(dow);
       if (!slots.length) { container.innerHTML = '<p style="color:var(--muted);">Día cerrado.</p>'; return; }
 
-      // Cargar turnos existentes de ese día
-      const dayStr = selectedDate.toISOString().slice(0,10);
+      // Cargar turnos existentes de ese día (rango local para evitar desfase de zona horaria)
+      const dayStart = new Date(selectedDate); dayStart.setHours(0,0,0,0);
+      const dayEnd = new Date(selectedDate); dayEnd.setHours(23,59,59,999);
       const { data: turnos } = await sb.from('turnos')
         .select('fecha_hora')
-        .gte('fecha_hora', dayStr + 'T00:00:00')
-        .lte('fecha_hora', dayStr + 'T23:59:59')
+        .gte('fecha_hora', dayStart.toISOString())
+        .lte('fecha_hora', dayEnd.toISOString())
         .not('estado', 'eq', 'cancelado');
       turnosOcupados = (turnos || []).map(t => new Date(t.fecha_hora).toTimeString().slice(0,5));
 
@@ -445,8 +446,9 @@
         pacienteId = nuevo.id;
       }
 
-      // Crear turno
-      const fechaHora = `${selectedDate.toISOString().slice(0,10)}T${selectedSlot}:00`;
+      // Crear turno (guardar el instante correcto según hora local)
+      const ymd = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
+      const fechaHora = new Date(`${ymd}T${selectedSlot}:00`).toISOString();
       const { error: errTurno } = await sb.from('turnos').insert({
         paciente_id: pacienteId,
         servicio_id: selectedService.id,

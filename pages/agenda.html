@@ -137,6 +137,14 @@
     let currentView = 'dia';
     let turnosCache = [];
 
+    // ── Helpers de fecha en hora LOCAL (evita el desfase de zona horaria) ──
+    // Fecha local YYYY-MM-DD (no usar toISOString, que pasa a UTC)
+    function ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+    // ISO (UTC) -> valor para input datetime-local (hora local del navegador)
+    function isoToLocalInput(iso){ if(!iso) return ''; const d=new Date(iso); const off=d.getTimezoneOffset(); return new Date(d.getTime()-off*60000).toISOString().slice(0,16); }
+    // valor datetime-local (hora local) -> ISO con zona, para guardar el instante correcto
+    function localInputToISO(v){ return v ? new Date(v).toISOString() : null; }
+
     function getSlots(dow) {
       const h = HORARIOS[dow]; if (!h) return null;
       const slots = [];
@@ -185,7 +193,7 @@
         const s=new Date(currentDate); s.setHours(sh,sm,0,0);
         const e=new Date(s.getTime()+SLOT_MIN*60000);
         const tt=turnosInRange(s,e);
-        const dt=`${currentDate.toISOString().slice(0,10)}T${slot}`;
+        const dt=`${ymd(currentDate)}T${slot}`;
         html+=`<div class="hora-label">${slot}</div><div class="hora-slot" data-slot="${dt}">${tt.map(t=>turnoHTML(t,false)).join('')}</div>`;
       }
       html+='</div>';
@@ -219,7 +227,7 @@
           const s=new Date(d); s.setHours(sh,sm,0,0);
           const e=new Date(s.getTime()+SLOT_MIN*60000);
           const tt=turnosInRange(s,e);
-          const dt=`${d.toISOString().slice(0,10)}T${slot}`;
+          const dt=`${ymd(d)}T${slot}`;
           html+=`<div class="week-cell" data-slot="${dt}">${tt.map(t=>turnoHTML(t,true)).join('')}</div>`;
         }
       }
@@ -252,7 +260,7 @@
         const dayEnd=new Date(d); dayEnd.setHours(23,59,59,999);
         const tt=turnosInRange(dayStart,dayEnd);
         const maxShow=3;
-        html+=`<div class="${cls.join(' ')}" data-date="${d.toISOString().slice(0,10)}">`;
+        html+=`<div class="${cls.join(' ')}" data-date="${ymd(d)}">`;
         html+=`<div class="day-num">${d.getDate()}</div>`;
         if (!isDom) {
           tt.slice(0,maxShow).forEach(t=>html+=turnoHTML(t,true));
@@ -342,7 +350,7 @@
         document.getElementById('paciente_id').value=turno.paciente_id??'';
         document.getElementById('servicio_id').value=turno.servicio_id??'';
         document.getElementById('personal_id').value=turno.personal_id??'';
-        document.getElementById('fecha_hora').value=turno.fecha_hora?turno.fecha_hora.slice(0,16):'';
+        document.getElementById('fecha_hora').value=isoToLocalInput(turno.fecha_hora);
         document.getElementById('duracion_min').value=turno.duracion_min??60;
         document.getElementById('estado').value=turno.estado??'pendiente';
         document.getElementById('notas').value=turno.notas??'';
@@ -387,7 +395,7 @@
         paciente_id:document.getElementById('paciente_id').value||null,
         servicio_id:document.getElementById('servicio_id').value||null,
         personal_id:document.getElementById('personal_id').value||null,
-        fecha_hora:document.getElementById('fecha_hora').value||null,
+        fecha_hora:localInputToISO(document.getElementById('fecha_hora').value),
         duracion_min:document.getElementById('duracion_min').value||60,
         estado:document.getElementById('estado').value,
         notas:document.getElementById('notas').value||null,
