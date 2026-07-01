@@ -205,10 +205,20 @@
       { db: { schema: 'bienestar' } }
     );
 
-    const HORARIOS = {
+    // Horarios (default; se reemplazan con los de Configuración al iniciar)
+    let HORARIOS = {
       1:{desde:'09:30',hasta:'19:30'}, 2:{desde:'09:30',hasta:'19:30'}, 3:{desde:'09:30',hasta:'19:30'},
       4:{desde:'09:30',hasta:'19:30'}, 5:{desde:'09:30',hasta:'19:30'}, 6:{desde:'10:00',hasta:'14:00'},
     };
+    async function cargarHorarios() {
+      try {
+        const { data } = await sb.from('config').select('hora_apertura,hora_cierre,sab_apertura,sab_cierre').eq('id',1).single();
+        if (data) {
+          const lv = { desde: data.hora_apertura || '09:30', hasta: data.hora_cierre || '19:30' };
+          HORARIOS = { 1:lv, 2:lv, 3:lv, 4:lv, 5:lv, 6:{ desde: data.sab_apertura || '10:00', hasta: data.sab_cierre || '14:00' } };
+        }
+      } catch (e) { /* usa los default */ }
+    }
     const SLOT_MIN = 60;
     const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
     const DIAS_CAL = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
@@ -455,6 +465,7 @@
         fecha_hora: fechaHora,
         duracion_min: selectedService.duracion_min || 60,
         estado: 'pendiente',
+        origen: 'online',
         notas: document.getElementById('r-notas').value || null,
       });
       if (errTurno) { errorEl.textContent = 'Error al reservar: ' + errTurno.message; return; }
@@ -477,6 +488,7 @@
     });
 
     // Init
+    cargarHorarios();
     loadCatalogo();
   </script>
 </body>

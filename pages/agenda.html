@@ -63,6 +63,19 @@
       <header class="topbar"><h1>Agenda</h1></header>
       <div class="content">
 
+        <!-- Reserva online para pacientes -->
+        <div class="card" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;justify-content:space-between;background:var(--color-primary-light);margin-bottom:1rem;">
+          <div>
+            <strong style="color:var(--color-primary-dark);">Reserva online para pacientes</strong>
+            <div style="font-size:0.82rem;color:var(--color-text-muted);">Comparte este enlace en Instagram / WhatsApp. Las reservas entran a la agenda marcadas como <span style="color:var(--color-accent);font-weight:600;">ONLINE</span>.</div>
+            <code id="reserva-url" style="font-size:0.8rem;"></code>
+          </div>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <button type="button" id="copiar-url" class="btn-secondary btn-sm">Copiar enlace</button>
+            <button type="button" id="abrir-url" class="btn btn-sm">Abrir</button>
+          </div>
+        </div>
+
         <!-- Formulario turno -->
         <div class="card" id="form-card" style="display:none;">
           <h2 id="form-title" style="margin-top:0;">Nuevo turno</h2>
@@ -173,8 +186,10 @@
       const pac = t.pacientes ? `${t.pacientes.nombre} ${t.pacientes.apellido}` : '';
       const srv = t.servicios?.nombre ?? '';
       const hora = new Date(t.fecha_hora).toLocaleTimeString('es-AR',{timeStyle:'short'});
-      if (compact) return `<div class="month-turno ${t.estado}" data-id="${t.id}" title="${hora} ${pac} — ${srv}">${hora} ${pac.split(' ')[0]||''}</div>`;
-      return `<div class="slot-turno ${t.estado}" data-id="${t.id}"><span class="slot-paciente">${hora} — ${pac}</span> <span class="slot-servicio">${srv}</span></div>`;
+      const online = t.origen === 'online';
+      const onlineTag = online ? '<span style="background:#c5a44e;color:#fff;border-radius:4px;padding:0 4px;font-size:0.62rem;margin-left:3px;">ONLINE</span>' : '';
+      if (compact) return `<div class="month-turno ${t.estado}" data-id="${t.id}" title="${hora} ${pac} — ${srv}${online?' (reserva online)':''}">${online?'● ':''}${hora} ${pac.split(' ')[0]||''}</div>`;
+      return `<div class="slot-turno ${t.estado}" data-id="${t.id}"><span class="slot-paciente">${hora} — ${pac}</span>${onlineTag} <span class="slot-servicio">${srv}</span></div>`;
     }
 
     function turnosInRange(start, end) {
@@ -410,6 +425,17 @@
     (async()=>{
       const s=await initLayout('agenda'); if(!s) return;
       horariosDesdeConfig(await getConfig()); // horarios desde Configuración
+
+      // Enlace de reserva online (para publicar en redes)
+      const SITE_BASE = (location.protocol==='http:'||location.protocol==='https:') ? location.origin : 'https://aivimed.nnovoa92.workers.dev';
+      const reservaUrl = `${SITE_BASE}/reservar.html`;
+      document.getElementById('reserva-url').textContent = reservaUrl;
+      document.getElementById('copiar-url').addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(reservaUrl); document.getElementById('copiar-url').textContent = '¡Copiado!'; setTimeout(()=>document.getElementById('copiar-url').textContent='Copiar enlace',1500); }
+        catch(e){ prompt('Copia el enlace:', reservaUrl); }
+      });
+      document.getElementById('abrir-url').addEventListener('click', () => window.open(reservaUrl,'_blank'));
+
       const [{data:pacientes},{data:servicios},{data:personal}]=await Promise.all([
         supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo',true).order('apellido'),
         supabaseClient.from('servicios').select('id,nombre').eq('activo',true).order('nombre'),
