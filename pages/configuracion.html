@@ -75,6 +75,7 @@
             <textarea id="srv-template" rows="10" placeholder="Selecciona un servicio para editar su plantilla…" disabled></textarea>
           </div>
           <button type="button" id="srv-guardar" disabled>Guardar plantilla</button>
+          <button type="button" id="srv-restaurar" class="btn-secondary" disabled>Restaurar texto estándar</button>
           <span class="ok-msg" id="srv-ok" style="color:var(--color-success);font-size:0.85rem;margin-left:0.5rem;"></span>
         </div>
 
@@ -128,15 +129,59 @@
     const srvSelect = document.getElementById('srv-select');
     const srvTemplate = document.getElementById('srv-template');
     const srvGuardar = document.getElementById('srv-guardar');
+    const srvRestaurar = document.getElementById('srv-restaurar');
+
+    // Riesgos específicos por tipo de procedimiento
+    function riesgosDe(nombreServicio) {
+      const n = (nombreServicio || '').toLowerCase();
+      if (/botox|toxina|botul/.test(n)) return 'dolor o hematoma en el sitio de punción, asimetría temporal, caída palpebral (ptosis) transitoria, cefalea, y en casos poco frecuentes, debilidad muscular localizada.';
+      if (/hialur|relleno|rinomodel|armoniz|labio|surco/.test(n)) return 'inflamación, hematomas, sensibilidad, nódulos o irregularidades palpables, reacción de hipersensibilidad y, de manera excepcional, compromiso vascular que requiera atención inmediata.';
+      if (/hilo/.test(n)) return 'hematomas, molestias a la palpación, extrusión o visibilidad del hilo, asimetría y leve dolor en los días posteriores.';
+      if (/mesoterap|suero|vitamin|ortomolec|prp|plasma/.test(n)) return 'dolor, enrojecimiento o flebitis en el sitio de punción, hematomas, mareos y, en casos poco frecuentes, reacción alérgica.';
+      if (/hidrolipo|lipolit|reduct|cavita|radiofrec/.test(n)) return 'dolor, edema, hematomas, irregularidades transitorias del contorno corporal y enrojecimiento de la zona tratada.';
+      if (/láser|laser|depila/.test(n)) return 'enrojecimiento, sensación de calor, quemaduras superficiales, costras y cambios temporales de pigmentación de la piel.';
+      if (/limpieza|facial|peeling|dermapen|glow|micro/.test(n)) return 'enrojecimiento, descamación, sensibilidad y leve irritación de la piel en los días posteriores.';
+      return 'enrojecimiento, inflamación, hematomas, dolor leve y sensibilidad temporal en la zona tratada, u otros propios del procedimiento.';
+    }
+
+    // Texto estándar en formato plantilla (con variables {nombre} {rut} {procedimiento} {fecha})
+    function plantillaEstandar(nombreServicio) {
+      const srv = nombreServicio || '{procedimiento}';
+      return `CONSENTIMIENTO INFORMADO
+AIVIMED — Salud Integral
+Procedimiento: {procedimiento}
+
+Yo, {nombre}, RUT {rut}, en pleno uso de mis facultades mentales y de manera voluntaria, declaro que:
+
+1. He sido informado/a sobre el procedimiento de {procedimiento}, incluyendo su naturaleza, objetivos, beneficios esperados, riesgos posibles, alternativas y contraindicaciones.
+2. He tenido la oportunidad de realizar todas las preguntas que consideré necesarias, las cuales han sido respondidas a mi satisfacción por el profesional tratante.
+3. Comprendo que los resultados pueden variar según las características individuales de cada paciente y que no se garantizan resultados específicos.
+4. Conozco los posibles efectos secundarios de este procedimiento, que pueden incluir: ${riesgosDe(srv)}
+5. Me comprometo a seguir las indicaciones pre y post procedimiento entregadas por el profesional.
+6. Declaro no haber omitido información relevante sobre mi estado de salud, alergias, medicamentos en uso, embarazo o cualquier condición que pueda afectar el procedimiento.
+
+En consecuencia, autorizo la realización del procedimiento mencionado, aceptando los riesgos inherentes al mismo.
+
+Fecha: {fecha}`;
+    }
 
     srvSelect.addEventListener('change', () => {
       const srv = serviciosCache.find(s => s.id === srvSelect.value);
       if (!srv) {
-        srvTemplate.value = ''; srvTemplate.disabled = true; srvGuardar.disabled = true; return;
+        srvTemplate.value = ''; srvTemplate.disabled = true; srvGuardar.disabled = true; if (srvRestaurar) srvRestaurar.disabled = true; return;
       }
-      srvTemplate.value = srv.consentimiento_template || '';
+      // Si tiene plantilla guardada la muestra; si no, precarga el texto estándar del procedimiento
+      srvTemplate.value = srv.consentimiento_template || plantillaEstandar(srv.nombre);
       srvTemplate.disabled = false;
       srvGuardar.disabled = false;
+      if (srvRestaurar) srvRestaurar.disabled = false;
+    });
+
+    if (srvRestaurar) srvRestaurar.addEventListener('click', () => {
+      const srv = serviciosCache.find(s => s.id === srvSelect.value);
+      if (!srv) return;
+      if (!confirm('¿Restaurar el texto estándar de este procedimiento? Se reemplaza lo que hay en el cuadro (no se guarda hasta que presiones Guardar).')) return;
+      srvTemplate.value = plantillaEstandar(srv.nombre);
     });
 
     srvGuardar.addEventListener('click', async () => {
