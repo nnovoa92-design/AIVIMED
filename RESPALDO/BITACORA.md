@@ -3,6 +3,7 @@
 Registro cronológico de lo construido. Lo más reciente arriba.
 
 ## 2026-07
+- **Plantilla de consentimiento Ácido Hialurónico** cargada desde el formulario real de AIVIMED + puntos legales agregados (veracidad, contraindicaciones ampliadas, Ley 19.628, derecho a revocar, autorización publicitaria separada/opcional). Archivo: `sql/plantilla_acido_hialuronico.sql`. NOTA: cuando la clienta envíe formularios reales de otros procedimientos, transcribirlos igual como plantilla del servicio correspondiente.
 - **Carpeta RESPALDO** creada (PROYECTO.md, RESPALDO.md, BITACORA.md) como respaldo maestro del proyecto.
 - **Configuración:** al elegir un servicio, el cuadro de consentimiento precarga el texto estándar del procedimiento (antes salía en blanco). Botón "Restaurar texto estándar".
 - **Reserva online:** al tocar un servicio avanza solo; WhatsApp al número de AIVIMED + botón de correo; estructura EmailJS lista (sin activar).
