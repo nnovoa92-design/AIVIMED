@@ -51,13 +51,20 @@
     );
     const cId = new URLSearchParams(location.search).get('c');
     const cont = document.getElementById('contenido');
-    let consent = null, canvas, ctx, drawing = false, firmado = false;
+    let consent = null, canvas, ctx, drawing = false, firmado = false, clinicaNombre = 'AIVIMED';
 
     async function cargar() {
       if (!cId) { cont.innerHTML = '<div class="muted">Enlace inválido.</div>'; return; }
       const { data, error } = await sb.rpc('obtener_consentimiento_publico', { p_id: cId });
       if (error || !data) { cont.innerHTML = '<div class="muted">No se encontró el consentimiento. Verifica el enlace.</div>'; return; }
       consent = data;
+      if (consent.clinica) {
+        clinicaNombre = consent.clinica.nombre || 'AIVIMED';
+        document.querySelector('.head .brand').textContent = clinicaNombre;
+        document.title = 'Firmar consentimiento — ' + clinicaNombre;
+        document.querySelector('.footer').textContent =
+          [clinicaNombre, consent.clinica.direccion].filter(Boolean).join(' · ');
+      }
       render();
     }
 
@@ -110,7 +117,7 @@
       const rut = document.getElementById('f-rut').value.trim();
       const { error } = await sb.rpc('firmar_consentimiento', { p_id: cId, p_firma: firma, p_nombre: nombre, p_rut: rut, p_user_agent: navigator.userAgent });
       if (error) { err.textContent = 'Error: ' + error.message; return; }
-      cont.innerHTML = '<div class="card ok-msg"><div class="check">✅</div><p>¡Listo! Tu consentimiento quedó firmado y registrado.<br>Te esperamos en AIVIMED.</p></div>';
+      cont.innerHTML = '<div class="card ok-msg"><div class="check">✅</div><p>¡Listo! Tu consentimiento quedó firmado y registrado.<br>Te esperamos en ' + clinicaNombre + '.</p></div>';
     }
 
     cargar();

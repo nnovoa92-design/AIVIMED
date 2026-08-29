@@ -74,6 +74,13 @@
       const { data, error } = await sb.rpc('obtener_cotizacion_publica', { p_cot_id: cotId });
       if (error || !data) { cont.innerHTML = '<div class="muted">No se encontró la cotización. Verifica el enlace.</div>'; return; }
       cot = data;
+      if (cot.clinica) {
+        const nom = cot.clinica.nombre || 'AIVIMED';
+        document.querySelector('.head .brand').textContent = nom;
+        document.title = 'Tu cotización — ' + nom;
+        document.querySelector('.footer').textContent =
+          [nom, cot.clinica.direccion, cot.clinica.correo].filter(Boolean).join(' · ');
+      }
       render();
     }
 

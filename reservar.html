@@ -122,8 +122,8 @@
     <!-- Header -->
     <div class="header">
       <img src="assets/img/logo.png" alt="AIVIMED" onerror="this.style.display='none'" />
-      <h1>AIVIMED</h1>
-      <p class="tagline">Salud Integral — Reserva tu hora</p>
+      <h1 class="brand-name">AIVIMED</h1>
+      <p class="tagline">Reserva tu hora</p>
     </div>
 
     <!-- Progress steps -->
@@ -179,7 +179,7 @@
       <div class="confirm-card">
         <div style="font-size:2rem;margin-bottom:0.5rem;">&#10003;</div>
         <h2>Reserva confirmada</h2>
-        <p style="color:var(--muted);font-size:0.88rem;">Te esperamos en AIVIMED</p>
+        <p style="color:var(--muted);font-size:0.88rem;">Te esperamos en <span class="brand-name">AIVIMED</span></p>
         <div class="confirm-detail" id="confirm-detail"></div>
       </div>
 
@@ -194,8 +194,8 @@
     </div>
 
     <div class="footer">
-      <p>AIVIMED — Salud Integral</p>
-      <p>Lunes a Viernes 09:30 – 19:30 · Sábados 10:00 – 14:00</p>
+      <p><span class="brand-name">AIVIMED</span></p>
+      <p id="footer-horario">Lunes a Viernes 09:30 – 19:30 · Sábados 10:00 – 14:00</p>
     </div>
   </div>
 
@@ -216,28 +216,29 @@
     };
     let CFG = { telefono: '', correo: 'aivimed.salud@gmail.com' };
 
-    // Clínica dueña de esta página (por slug en la URL: ?clinica=slug; por defecto aivimed)
+    // Clínica dueña de esta página (por slug en la URL: ?clinica=slug; por defecto aivimed).
+    // Todos los datos vienen de UNA función segura, aislada por clínica.
+    const SLUG = new URLSearchParams(location.search).get('clinica') || 'aivimed';
     let ORG_ID = null;
-    async function resolverOrg() {
-      const slug = new URLSearchParams(location.search).get('clinica') || 'aivimed';
-      try {
-        const { data } = await sb.rpc('org_por_slug', { p_slug: slug });
-        if (data && data.id) ORG_ID = data.id;
-      } catch (e) {}
-    }
+    let CATALOGO = { categorias: [], servicios: [] };
 
-    async function cargarHorarios() {
-      try {
-        let q = sb.from('config').select('hora_apertura,hora_cierre,sab_apertura,sab_cierre,telefono,correo');
-        q = ORG_ID ? q.eq('organizacion_id', ORG_ID) : q.eq('id', 1);
-        const { data } = await q.maybeSingle();
-        if (data) {
-          const lv = { desde: data.hora_apertura || '09:30', hasta: data.hora_cierre || '19:30' };
-          HORARIOS = { 1:lv, 2:lv, 3:lv, 4:lv, 5:lv, 6:{ desde: data.sab_apertura || '10:00', hasta: data.sab_cierre || '14:00' } };
-          CFG.telefono = data.telefono || '';
-          CFG.correo = data.correo || 'aivimed.salud@gmail.com';
-        }
-      } catch (e) { /* usa los default */ }
+    async function cargarDatos() {
+      const { data, error } = await sb.rpc('datos_reserva_publica', { p_slug: SLUG });
+      if (error || !data || !data.org) return false;
+      ORG_ID = data.org.id;
+      const nombreClinica = data.org.nombre || 'AIVIMED';
+      document.title = 'Reserva online — ' + nombreClinica;
+      document.querySelectorAll('.brand-name').forEach(el => el.textContent = nombreClinica);
+      const cf = data.config || {};
+      const lv = { desde: cf.hora_apertura || '09:30', hasta: cf.hora_cierre || '19:30' };
+      HORARIOS = { 1:lv, 2:lv, 3:lv, 4:lv, 5:lv, 6:{ desde: cf.sab_apertura || '10:00', hasta: cf.sab_cierre || '14:00' } };
+      CFG.telefono = cf.telefono || '';
+      CFG.correo = cf.correo || 'aivimed.salud@gmail.com';
+      CATALOGO.categorias = data.categorias || [];
+      CATALOGO.servicios = data.servicios || [];
+      const fh = document.getElementById('footer-horario');
+      if (fh) fh.textContent = `Lunes a Viernes ${lv.desde} – ${lv.hasta} · Sábados ${HORARIOS[6].desde} – ${HORARIOS[6].hasta}`;
+      return true;
     }
     const SLOT_MIN = 60;
     const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -279,11 +280,9 @@
     }
 
     // ─── PANEL 1: CATÁLOGO ───
-    async function loadCatalogo() {
-      const catQ = sb.from('categorias_servicios').select('*').order('orden');
-      const srvQ = sb.from('servicios').select('*').eq('activo', true).order('nombre');
-      if (ORG_ID) { catQ.eq('organizacion_id', ORG_ID); srvQ.eq('organizacion_id', ORG_ID); }
-      const [{ data: cats }, { data: servicios }] = await Promise.all([catQ, srvQ]);
+    function loadCatalogo() {
+      const cats = CATALOGO.categorias;
+      const servicios = CATALOGO.servicios;
 
       const container = document.getElementById('catalogo');
       if (!servicios?.length) { container.innerHTML = '<p>No hay servicios disponibles.</p>'; return; }
@@ -463,38 +462,21 @@
       const telefono = document.getElementById('r-telefono').value.trim();
       if (!nombre || !apellido || !telefono) { errorEl.textContent = 'Completa nombre, apellido y teléfono.'; return; }
 
-      // Buscar si el paciente ya existe (por teléfono)
-      let pacienteId;
-      const { data: existente } = await sb.from('pacientes').select('id').eq('telefono', telefono).limit(1);
-      if (existente?.length) {
-        pacienteId = existente[0].id;
-      } else {
-        const { data: nuevo, error: errPac } = await sb.from('pacientes').insert({
-          organizacion_id: ORG_ID,
-          nombre,
-          apellido,
-          dni: document.getElementById('r-rut').value || null,
-          telefono,
-          email: document.getElementById('r-email').value || null,
-        }).select('id').single();
-        if (errPac) { errorEl.textContent = 'Error al registrar datos: ' + errPac.message; return; }
-        pacienteId = nuevo.id;
-      }
-
-      // Crear turno (guardar el instante correcto según hora local)
+      // Crear reserva vía función segura (crea/reusa paciente + turno en esta clínica)
       const ymd = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
       const fechaHora = new Date(`${ymd}T${selectedSlot}:00`).toISOString();
-      const { error: errTurno } = await sb.from('turnos').insert({
-        organizacion_id: ORG_ID,
-        paciente_id: pacienteId,
-        servicio_id: selectedService.id,
-        fecha_hora: fechaHora,
-        duracion_min: selectedService.duracion_min || 60,
-        estado: 'pendiente',
-        origen: 'online',
-        notas: document.getElementById('r-notas').value || null,
+      const { error: errReserva } = await sb.rpc('crear_reserva', {
+        p_slug: SLUG,
+        p_nombre: nombre,
+        p_apellido: apellido,
+        p_dni: document.getElementById('r-rut').value || null,
+        p_telefono: telefono,
+        p_email: document.getElementById('r-email').value || null,
+        p_servicio_id: selectedService.id,
+        p_fecha_hora: fechaHora,
+        p_notas: document.getElementById('r-notas').value || null,
       });
-      if (errTurno) { errorEl.textContent = 'Error al reservar: ' + errTurno.message; return; }
+      if (errReserva) { errorEl.textContent = 'Error al reservar: ' + errReserva.message; return; }
 
       // Confirmación
       const fechaStr = selectedDate.toLocaleDateString('es-CL', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
@@ -558,9 +540,13 @@
 
     // Init
     (async () => {
-      await resolverOrg();
-      await cargarHorarios();
-      await loadCatalogo();
+      const ok = await cargarDatos();
+      if (!ok) {
+        document.getElementById('catalogo').innerHTML =
+          '<p style="text-align:center;color:var(--muted);padding:2rem;">Clínica no encontrada o no disponible. Verifica el enlace.</p>';
+        return;
+      }
+      loadCatalogo();
     })();
   </script>
 </body>
