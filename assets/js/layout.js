@@ -39,16 +39,26 @@ async function getConfig() {
   return _configCache;
 }
 
-// Perfil del usuario actual (rol + organización), cacheado
+// Perfil del usuario actual (rol + organización), cacheado.
+// Devuelve null si no se pudo determinar (para no provocar redirecciones erróneas).
 let _perfilCache = null;
 async function getMiPerfil() {
   if (_perfilCache) return _perfilCache;
-  const { data: { user } } = await supabaseClient.auth.getUser();
-  if (!user) return null;
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  const uid = session && session.user && session.user.id;
+  if (!uid) return null;
   const { data } = await supabaseClient.from('perfiles')
-    .select('rol, organizacion_id, nombre, email').eq('id', user.id).maybeSingle();
-  _perfilCache = data || { rol: 'recepcion', organizacion_id: null };
+    .select('rol, organizacion_id, nombre, email').eq('id', uid).maybeSingle();
+  _perfilCache = data || null;
   return _perfilCache;
+}
+
+// Clínica que el súper-admin está administrando (impersonación), si hay.
+function actingOrg() { try { return sessionStorage.getItem('sa_org') || null; } catch (e) { return null; } }
+function actingOrgNombre() { try { return sessionStorage.getItem('sa_org_nombre') || ''; } catch (e) { return ''; } }
+function salirDeClinica() {
+  try { sessionStorage.removeItem('sa_org'); sessionStorage.removeItem('sa_org_nombre'); } catch (e) {}
+  location.href = 'superadmin.html';
 }
 
 // Menú del súper-admin (dueño de la plataforma)
@@ -98,15 +108,22 @@ async function initLayout(activeKey) {
   const session = await requireAuth();
   if (!session) return null;
 
-  // Rol del usuario → enrutamiento: el súper-admin va a su Torre de Control;
-  // los usuarios de clínica no pueden entrar al panel de súper-admin.
+  // Rol del usuario → enrutamiento (a prueba de bucles):
+  //  · súper-admin SIN clínica activa → Torre de Control Global
+  //  · súper-admin CON clínica activa → usa la app normal, aislada a esa clínica
+  //  · usuario de clínica → nunca entra al panel de súper-admin
   const perfil = await getMiPerfil();
   const esSuperadmin = !!perfil && perfil.rol === 'superadmin';
+  const impersonando = esSuperadmin && !!actingOrg();
   const enSuperadmin = location.pathname.endsWith('superadmin.html');
-  if (esSuperadmin && !enSuperadmin) { location.href = 'superadmin.html'; return null; }
-  if (!esSuperadmin && enSuperadmin) { location.href = 'dashboard.html'; return null; }
 
-  const menu = esSuperadmin ? NAV_SUPERADMIN : NAV_ITEMS;
+  if (esSuperadmin) {
+    if (!impersonando && !enSuperadmin) { location.replace('superadmin.html'); return null; }
+  } else if (perfil) {
+    if (enSuperadmin) { location.replace('dashboard.html'); return null; }
+  }
+
+  const menu = (esSuperadmin && !impersonando) ? NAV_SUPERADMIN : NAV_ITEMS;
 
   const sidebar = document.getElementById('sidebar');
   if (sidebar) {
@@ -118,20 +135,39 @@ async function initLayout(activeKey) {
     }).join('');
 
     const logoTag = `<img class="brand-logo" src="../assets/img/logo.png" alt="" onerror="this.style.display='none'">`;
-    const brandTxt = esSuperadmin
-      ? `<span>Plataforma<span class="brand-sub">Súper-Admin</span></span>`
-      : `<span>AIVIMED<span class="brand-sub">Salud Integral</span></span>`;
+    const brandTxt = impersonando
+      ? `<span>${actingOrgNombre() || 'Clínica'}<span class="brand-sub">Administrando</span></span>`
+      : esSuperadmin
+        ? `<span>Plataforma<span class="brand-sub">Súper-Admin</span></span>`
+        : `<span>AIVIMED<span class="brand-sub">Salud Integral</span></span>`;
     sidebar.innerHTML = `
       <div class="brand">
         ${logoTag}${brandTxt}
       </div>
       <nav>${navLinks}</nav>
       <div class="sidebar-footer">
+        ${impersonando ? `<button id="salir-clinica-btn" style="width:100%;margin-bottom:0.5rem;background:var(--color-accent);border:none;color:#1a2320;">← Volver a la Torre</button>` : ''}
         <button id="logout-btn" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);box-shadow:none;">Cerrar sesión</button>
       </div>
     `;
 
     document.getElementById('logout-btn').addEventListener('click', logout);
+    if (impersonando) {
+      const sc = document.getElementById('salir-clinica-btn');
+      if (sc) sc.addEventListener('click', salirDeClinica);
+    }
+
+    // Banner cuando el súper-admin está administrando una clínica
+    if (impersonando) {
+      const tb = document.querySelector('.topbar');
+      if (tb && !document.getElementById('impersonar-banner')) {
+        const b = document.createElement('div');
+        b.id = 'impersonar-banner';
+        b.style.cssText = 'background:var(--color-accent);color:#1a2320;font-size:0.82rem;font-weight:600;padding:0.35rem 1rem;text-align:center;';
+        b.innerHTML = `Estás administrando la clínica: ${actingOrgNombre() || ''} — todos los cambios afectan solo a esta clínica.`;
+        tb.parentNode.insertBefore(b, tb.nextSibling);
+      }
+    }
 
     const shell = sidebar.closest('.app-shell');
     const topbar = document.querySelector('.topbar');

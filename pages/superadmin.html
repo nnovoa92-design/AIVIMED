@@ -76,37 +76,48 @@
     const kpi = (icon, val, lbl) => `<div class="kpi"><div class="ic">${icon}</div><div><div class="val">${val}</div><div class="lbl">${lbl}</div></div></div>`;
 
     async function cargar() {
-      const [{ data: organizaciones }, { data: perfiles }, { data: pacientes }] = await Promise.all([
+      const [{ data: organizaciones }, { data: metr }] = await Promise.all([
         supabaseClient.from('organizaciones').select('*').order('nombre'),
-        supabaseClient.from('perfiles').select('organizacion_id, rol, email'),
-        supabaseClient.from('pacientes').select('organizacion_id'),
+        supabaseClient.rpc('sa_metricas'),
       ]);
       orgs = organizaciones || [];
-
-      // conteos por organización
-      const usuariosPorOrg = {}, pacientesPorOrg = {};
-      (perfiles || []).forEach(p => { if (p.organizacion_id) usuariosPorOrg[p.organizacion_id] = (usuariosPorOrg[p.organizacion_id]||0)+1; });
-      (pacientes || []).forEach(p => { pacientesPorOrg[p.organizacion_id] = (pacientesPorOrg[p.organizacion_id]||0)+1; });
+      const m = metr || { orgs: [], total_pacientes: 0, total_usuarios: 0 };
+      const porOrg = {}; (m.orgs || []).forEach(x => porOrg[x.id] = x);
 
       // KPIs globales
       document.getElementById('kpis').innerHTML = [
         kpi('◎', orgs.length, 'Clínicas'),
-        kpi('👥', (perfiles||[]).filter(p=>p.organizacion_id).length, 'Usuarios de clínicas'),
-        kpi('♥', (pacientes||[]).length, 'Pacientes (todas)'),
+        kpi('👥', m.total_usuarios || 0, 'Usuarios de clínicas'),
+        kpi('♥', m.total_pacientes || 0, 'Pacientes (todas)'),
         kpi('✓', orgs.filter(o=>o.activo).length, 'Clínicas activas'),
       ].join('');
 
       // tabla de clínicas
       const tb = document.getElementById('orgs-body');
-      tb.innerHTML = orgs.length ? orgs.map(o => `<tr>
+      tb.innerHTML = orgs.length ? orgs.map(o => {
+        const c = porOrg[o.id] || {};
+        return `<tr>
         <td><strong>${o.nombre}</strong></td>
         <td>${o.slug}</td>
         <td>${o.plan}</td>
-        <td>${usuariosPorOrg[o.id]||0}</td>
-        <td>${pacientesPorOrg[o.id]||0}</td>
+        <td>${c.usuarios || 0}</td>
+        <td>${c.pacientes || 0}</td>
         <td>${o.activo ? '<span class="badge badge-green">Activa</span>' : '<span class="badge badge-red">Inactiva</span>'}</td>
-        <td><button class="btn-secondary btn-sm toggle-btn" data-id="${o.id}" data-activo="${o.activo}">${o.activo ? 'Desactivar' : 'Activar'}</button></td>
-      </tr>`).join('') : '<tr><td colspan="7">Aún no hay clínicas.</td></tr>';
+        <td style="white-space:nowrap;">
+          <button class="btn-sm entrar-btn" data-id="${o.id}" data-nombre="${o.nombre}">Entrar y administrar</button>
+          <button class="btn-secondary btn-sm toggle-btn" data-id="${o.id}" data-activo="${o.activo}">${o.activo ? 'Desactivar' : 'Activar'}</button>
+        </td>
+      </tr>`;
+      }).join('') : '<tr><td colspan="7">Aún no hay clínicas.</td></tr>';
+
+      // Entrar a administrar una clínica (impersonación)
+      tb.querySelectorAll('.entrar-btn').forEach(b => b.addEventListener('click', () => {
+        try {
+          sessionStorage.setItem('sa_org', b.dataset.id);
+          sessionStorage.setItem('sa_org_nombre', b.dataset.nombre);
+        } catch (e) {}
+        location.href = 'dashboard.html';
+      }));
 
       tb.querySelectorAll('.toggle-btn').forEach(b => b.addEventListener('click', async () => {
         const nuevo = b.dataset.activo !== 'true';

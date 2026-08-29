@@ -215,9 +215,22 @@
       4:{desde:'09:30',hasta:'19:30'}, 5:{desde:'09:30',hasta:'19:30'}, 6:{desde:'10:00',hasta:'14:00'},
     };
     let CFG = { telefono: '', correo: 'aivimed.salud@gmail.com' };
+
+    // Clínica dueña de esta página (por slug en la URL: ?clinica=slug; por defecto aivimed)
+    let ORG_ID = null;
+    async function resolverOrg() {
+      const slug = new URLSearchParams(location.search).get('clinica') || 'aivimed';
+      try {
+        const { data } = await sb.rpc('org_por_slug', { p_slug: slug });
+        if (data && data.id) ORG_ID = data.id;
+      } catch (e) {}
+    }
+
     async function cargarHorarios() {
       try {
-        const { data } = await sb.from('config').select('hora_apertura,hora_cierre,sab_apertura,sab_cierre,telefono,correo').eq('id',1).single();
+        let q = sb.from('config').select('hora_apertura,hora_cierre,sab_apertura,sab_cierre,telefono,correo');
+        q = ORG_ID ? q.eq('organizacion_id', ORG_ID) : q.eq('id', 1);
+        const { data } = await q.maybeSingle();
         if (data) {
           const lv = { desde: data.hora_apertura || '09:30', hasta: data.hora_cierre || '19:30' };
           HORARIOS = { 1:lv, 2:lv, 3:lv, 4:lv, 5:lv, 6:{ desde: data.sab_apertura || '10:00', hasta: data.sab_cierre || '14:00' } };
@@ -267,10 +280,10 @@
 
     // ─── PANEL 1: CATÁLOGO ───
     async function loadCatalogo() {
-      const [{ data: cats }, { data: servicios }] = await Promise.all([
-        sb.from('categorias_servicios').select('*').order('orden'),
-        sb.from('servicios').select('*').eq('activo', true).order('nombre'),
-      ]);
+      const catQ = sb.from('categorias_servicios').select('*').order('orden');
+      const srvQ = sb.from('servicios').select('*').eq('activo', true).order('nombre');
+      if (ORG_ID) { catQ.eq('organizacion_id', ORG_ID); srvQ.eq('organizacion_id', ORG_ID); }
+      const [{ data: cats }, { data: servicios }] = await Promise.all([catQ, srvQ]);
 
       const container = document.getElementById('catalogo');
       if (!servicios?.length) { container.innerHTML = '<p>No hay servicios disponibles.</p>'; return; }
@@ -384,11 +397,13 @@
       // Cargar turnos existentes de ese día (rango local para evitar desfase de zona horaria)
       const dayStart = new Date(selectedDate); dayStart.setHours(0,0,0,0);
       const dayEnd = new Date(selectedDate); dayEnd.setHours(23,59,59,999);
-      const { data: turnos } = await sb.from('turnos')
+      const turnoQ = sb.from('turnos')
         .select('fecha_hora')
         .gte('fecha_hora', dayStart.toISOString())
         .lte('fecha_hora', dayEnd.toISOString())
         .not('estado', 'eq', 'cancelado');
+      if (ORG_ID) turnoQ.eq('organizacion_id', ORG_ID);
+      const { data: turnos } = await turnoQ;
       turnosOcupados = (turnos || []).map(t => new Date(t.fecha_hora).toTimeString().slice(0,5));
 
       // No mostrar slots pasados si es hoy
@@ -456,6 +471,7 @@
         pacienteId = existente[0].id;
       } else {
         const { data: nuevo, error: errPac } = await sb.from('pacientes').insert({
+          organizacion_id: ORG_ID,
           nombre,
           apellido,
           dni: document.getElementById('r-rut').value || null,
@@ -470,6 +486,7 @@
       const ymd = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
       const fechaHora = new Date(`${ymd}T${selectedSlot}:00`).toISOString();
       const { error: errTurno } = await sb.from('turnos').insert({
+        organizacion_id: ORG_ID,
         paciente_id: pacienteId,
         servicio_id: selectedService.id,
         fecha_hora: fechaHora,
@@ -541,8 +558,11 @@
     }
 
     // Init
-    cargarHorarios();
-    loadCatalogo();
+    (async () => {
+      await resolverOrg();
+      await cargarHorarios();
+      await loadCatalogo();
+    })();
   </script>
 </body>
 </html>

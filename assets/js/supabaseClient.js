@@ -1,8 +1,14 @@
 const SUPABASE_URL = 'https://qaeeqdfolgjobwxdpojd.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhZWVxZGZvbGdqb2J3eGRwb2pkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMjUxMDQsImV4cCI6MjA5NjcwMTEwNH0.HgGiUKN38A-anizmwPZOLftFBZXsyG862ibF2LwnRAs';
 
+// Clínica que el súper-admin está administrando (impersonación). Si está,
+// se envía como header y la base de datos aísla todo a esa clínica.
+let _actingOrg = null;
+try { _actingOrg = sessionStorage.getItem('sa_org') || null; } catch (e) { _actingOrg = null; }
+
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  db: { schema: 'bienestar' }
+  db: { schema: 'bienestar' },
+  global: _actingOrg ? { headers: { 'x-acting-org': _actingOrg } } : {}
 });
 
 async function requireAuth() {
