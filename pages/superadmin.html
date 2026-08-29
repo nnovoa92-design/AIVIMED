@@ -67,6 +67,42 @@
     </div>
   </div>
 
+  <!-- Modal: gestión de una clínica -->
+  <div id="gestion-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:flex-start;justify-content:center;overflow:auto;padding:2rem 1rem;">
+    <div class="card" style="max-width:720px;width:100%;margin:0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h2 style="margin:0;" id="g-titulo">Gestionar clínica</h2>
+        <button class="btn-secondary btn-sm" id="g-cerrar">✕ Cerrar</button>
+      </div>
+
+      <!-- Plan y estado -->
+      <h3 style="margin-bottom:.5rem;">Plan y estado</h3>
+      <div class="form-row" style="align-items:flex-end;">
+        <div class="form-group" style="flex:1;"><label>Plan / estado</label>
+          <select id="g-plan">
+            <option value="trial">Prueba (trial)</option>
+            <option value="activo">Activo</option>
+            <option value="suspendido">Suspendido (bloquea acceso)</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1;"><label>Vence el</label><input type="date" id="g-vence" /></div>
+        <div class="form-group" style="flex:1;"><label>Acceso</label>
+          <select id="g-activo"><option value="true">Activa</option><option value="false">Desactivada</option></select>
+        </div>
+        <div class="form-group" style="flex:0;"><button id="g-guardar-plan">Guardar</button></div>
+      </div>
+      <p id="g-plan-ok" style="color:var(--color-success);font-size:.85rem;"></p>
+
+      <!-- Usuarios -->
+      <h3 style="margin-bottom:.5rem;">Usuarios de la clínica</h3>
+      <table>
+        <thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Acceso</th><th>Acciones</th></tr></thead>
+        <tbody id="g-users"><tr><td colspan="5">Cargando…</td></tr></tbody>
+      </table>
+      <p id="g-user-ok" style="color:var(--color-success);font-size:.85rem;"></p>
+    </div>
+  </div>
+
   <script src="../assets/vendor/supabase.min.js"></script>
   <script src="../assets/js/supabaseClient.js"></script>
   <script src="../assets/js/layout.js"></script>
@@ -105,7 +141,7 @@
         <td>${o.activo ? '<span class="badge badge-green">Activa</span>' : '<span class="badge badge-red">Inactiva</span>'}</td>
         <td style="white-space:nowrap;">
           <button class="btn-sm entrar-btn" data-id="${o.id}" data-nombre="${o.nombre}">Entrar y administrar</button>
-          <button class="btn-secondary btn-sm toggle-btn" data-id="${o.id}" data-activo="${o.activo}">${o.activo ? 'Desactivar' : 'Activar'}</button>
+          <button class="btn-secondary btn-sm gestionar-btn" data-id="${o.id}">Gestionar</button>
         </td>
       </tr>`;
       }).join('') : '<tr><td colspan="7">Aún no hay clínicas.</td></tr>';
@@ -119,11 +155,7 @@
         location.href = 'dashboard.html';
       }));
 
-      tb.querySelectorAll('.toggle-btn').forEach(b => b.addEventListener('click', async () => {
-        const nuevo = b.dataset.activo !== 'true';
-        await supabaseClient.from('organizaciones').update({ activo: nuevo }).eq('id', b.dataset.id);
-        await cargar();
-      }));
+      tb.querySelectorAll('.gestionar-btn').forEach(b => b.addEventListener('click', () => abrirGestion(b.dataset.id)));
 
       // selector de clínicas del formulario de usuarios
       const sel = document.getElementById('u-org');
@@ -160,6 +192,81 @@
       document.getElementById('u-email').value = ''; document.getElementById('u-nombre').value = '';
       await cargar();
     });
+
+    // ─── Gestión de una clínica (modal) ───
+    let gOrg = null;
+    const ROLES = { admin:'Admin', profesional:'Profesional', recepcion:'Recepción' };
+
+    async function abrirGestion(orgId) {
+      gOrg = orgs.find(o => o.id === orgId);
+      if (!gOrg) return;
+      document.getElementById('g-titulo').textContent = 'Gestionar: ' + gOrg.nombre;
+      document.getElementById('g-plan').value = gOrg.plan || 'trial';
+      document.getElementById('g-activo').value = String(gOrg.activo !== false);
+      document.getElementById('g-vence').value = gOrg.fecha_vencimiento || '';
+      document.getElementById('g-plan-ok').textContent = '';
+      document.getElementById('g-user-ok').textContent = '';
+      document.getElementById('gestion-modal').style.display = 'flex';
+      await cargarUsuarios();
+    }
+
+    function cerrarGestion() { document.getElementById('gestion-modal').style.display = 'none'; gOrg = null; }
+    document.getElementById('g-cerrar').addEventListener('click', cerrarGestion);
+    document.getElementById('gestion-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'gestion-modal') cerrarGestion();
+    });
+
+    // Guardar plan / estado / vencimiento
+    document.getElementById('g-guardar-plan').addEventListener('click', async () => {
+      if (!gOrg) return;
+      const payload = {
+        plan: document.getElementById('g-plan').value,
+        activo: document.getElementById('g-activo').value === 'true',
+        fecha_vencimiento: document.getElementById('g-vence').value || null,
+      };
+      const { error } = await supabaseClient.from('organizaciones').update(payload).eq('id', gOrg.id);
+      if (error) { alert('Error: ' + error.message); return; }
+      Object.assign(gOrg, payload);
+      document.getElementById('g-plan-ok').textContent = '✓ Guardado';
+      await cargar(); // refrescar tabla de fondo
+    });
+
+    // Cargar usuarios de la clínica
+    async function cargarUsuarios() {
+      const tb = document.getElementById('g-users');
+      tb.innerHTML = '<tr><td colspan="5">Cargando…</td></tr>';
+      const { data, error } = await supabaseClient.rpc('sa_usuarios_org', { p_org: gOrg.id });
+      if (error) { tb.innerHTML = `<tr><td colspan="5">Error: ${error.message}</td></tr>`; return; }
+      const users = data || [];
+      tb.innerHTML = users.length ? users.map(u => `<tr>
+        <td>${u.nombre || '–'}</td>
+        <td style="font-size:.8rem;">${u.email || '–'}</td>
+        <td><select class="u-rol" data-uid="${u.id}">${Object.entries(ROLES).map(([v,l]) => `<option value="${v}" ${u.rol===v?'selected':''}>${l}</option>`).join('')}</select></td>
+        <td><select class="u-activo" data-uid="${u.id}"><option value="true" ${u.activo!==false?'selected':''}>Activo</option><option value="false" ${u.activo===false?'selected':''}>Inactivo</option></select></td>
+        <td style="white-space:nowrap;">
+          <button class="btn-sm u-save" data-uid="${u.id}">Guardar</button>
+          <button class="btn-secondary btn-sm u-pass" data-email="${u.email || ''}">Restablecer contraseña</button>
+        </td>
+      </tr>`).join('') : '<tr><td colspan="5">Esta clínica aún no tiene usuarios. Asígnalos abajo.</td></tr>';
+
+      tb.querySelectorAll('.u-save').forEach(b => b.addEventListener('click', async () => {
+        const uid = b.dataset.uid;
+        const rol = tb.querySelector(`.u-rol[data-uid="${uid}"]`).value;
+        const activo = tb.querySelector(`.u-activo[data-uid="${uid}"]`).value === 'true';
+        const { error } = await supabaseClient.rpc('sa_editar_usuario', { p_uid: uid, p_rol: rol, p_activo: activo });
+        if (error) { alert('Error: ' + error.message); return; }
+        document.getElementById('g-user-ok').textContent = '✓ Usuario actualizado';
+      }));
+
+      tb.querySelectorAll('.u-pass').forEach(b => b.addEventListener('click', async () => {
+        const email = b.dataset.email;
+        if (!email) { alert('Ese usuario no tiene correo registrado.'); return; }
+        if (!confirm(`Se enviará un correo a ${email} para restablecer su contraseña. ¿Continuar?`)) return;
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: location.origin + '/index.html' });
+        if (error) { alert('Error: ' + error.message); return; }
+        document.getElementById('g-user-ok').textContent = '✓ Correo de restablecimiento enviado a ' + email;
+      }));
+    }
 
     (async () => {
       const s = await initLayout('superadmin');

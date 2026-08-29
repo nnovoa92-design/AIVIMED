@@ -97,13 +97,22 @@
       setTimeout(() => { el.textContent = ''; }, 2500);
     }
 
+    // Guarda la configuración de la clínica activa (crea la fila si no existe).
+    async function guardarConfig(campos) {
+      const org = await orgEfectiva();
+      if (!org) return 'No se pudo determinar la clínica activa.';
+      const { error } = await supabaseClient.from('config')
+        .upsert(Object.assign({ organizacion_id: org }, campos), { onConflict: 'organizacion_id' });
+      return error ? error.message : null;
+    }
+
     // ── Empresa ──
     document.getElementById('empresa-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const payload = { id: 1 };
+      const payload = {};
       EMPRESA_FIELDS.forEach(f => payload[f] = document.getElementById(f).value || null);
-      const { error } = await supabaseClient.from('config').update(payload).eq('id', 1);
-      if (error) { alert('Error: ' + error.message); return; }
+      const err = await guardarConfig(payload);
+      if (err) { alert('Error: ' + err); return; }
       _configCache = null; // limpiar cache
       flash('empresa-ok', '✓ Guardado');
     });
@@ -119,8 +128,8 @@
         sab_cierre: document.getElementById('sab_cierre').value || null,
         politica_cotizacion: document.getElementById('politica_cotizacion').value || null,
       };
-      const { error } = await supabaseClient.from('config').update(payload).eq('id', 1);
-      if (error) { alert('Error: ' + error.message); return; }
+      const err = await guardarConfig(payload);
+      if (err) { alert('Error: ' + err); return; }
       _configCache = null;
       flash('oper-ok', '✓ Guardado');
     });

@@ -397,14 +397,13 @@
       // Cargar turnos existentes de ese día (rango local para evitar desfase de zona horaria)
       const dayStart = new Date(selectedDate); dayStart.setHours(0,0,0,0);
       const dayEnd = new Date(selectedDate); dayEnd.setHours(23,59,59,999);
-      const turnoQ = sb.from('turnos')
-        .select('fecha_hora')
-        .gte('fecha_hora', dayStart.toISOString())
-        .lte('fecha_hora', dayEnd.toISOString())
-        .not('estado', 'eq', 'cancelado');
-      if (ORG_ID) turnoQ.eq('organizacion_id', ORG_ID);
-      const { data: turnos } = await turnoQ;
-      turnosOcupados = (turnos || []).map(t => new Date(t.fecha_hora).toTimeString().slice(0,5));
+      // Horarios ocupados vía RPC seguro (no expone datos de pacientes)
+      const { data: ocupados } = await sb.rpc('horarios_ocupados', {
+        p_org: ORG_ID,
+        p_desde: dayStart.toISOString(),
+        p_hasta: dayEnd.toISOString(),
+      });
+      turnosOcupados = (ocupados || []).map(t => new Date(t).toTimeString().slice(0,5));
 
       // No mostrar slots pasados si es hoy
       const ahora = new Date();

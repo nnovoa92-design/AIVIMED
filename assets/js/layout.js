@@ -30,7 +30,9 @@ let _configCache = null;
 async function getConfig() {
   if (_configCache) return _configCache;
   try {
-    const { data } = await supabaseClient.from('config').select('*').eq('id', 1).single();
+    // RLS ya limita la config a la clínica activa (la del usuario, o la que
+    // el súper-admin está administrando). Puede no existir aún → defaults.
+    const { data } = await supabaseClient.from('config').select('*').maybeSingle();
     _configCache = Object.assign({}, CONFIG_DEFAULT, data || {});
   } catch (e) {
     _configCache = Object.assign({}, CONFIG_DEFAULT);
@@ -48,7 +50,7 @@ async function getMiPerfil() {
   const uid = session && session.user && session.user.id;
   if (!uid) return null;
   const { data } = await supabaseClient.from('perfiles')
-    .select('rol, organizacion_id, nombre, email').eq('id', uid).maybeSingle();
+    .select('rol, organizacion_id, nombre, email, organizaciones(activo, plan, nombre)').eq('id', uid).maybeSingle();
   _perfilCache = data || null;
   return _perfilCache;
 }
@@ -56,6 +58,14 @@ async function getMiPerfil() {
 // Clínica que el súper-admin está administrando (impersonación), si hay.
 function actingOrg() { try { return sessionStorage.getItem('sa_org') || null; } catch (e) { return null; } }
 function actingOrgNombre() { try { return sessionStorage.getItem('sa_org_nombre') || ''; } catch (e) { return ''; } }
+// Clínica "efectiva" en la que se está trabajando: la que administra el
+// súper-admin (impersonación) o la del propio usuario.
+async function orgEfectiva() {
+  const imp = actingOrg();
+  if (imp) return imp;
+  const p = await getMiPerfil();
+  return p && p.organizacion_id ? p.organizacion_id : null;
+}
 function salirDeClinica() {
   try { sessionStorage.removeItem('sa_org'); sessionStorage.removeItem('sa_org_nombre'); } catch (e) {}
   location.href = 'superadmin.html';
@@ -123,6 +133,15 @@ async function initLayout(activeKey) {
     if (!impersonando && !enSuperadmin) { location.replace('superadmin.html'); return null; }
   } else if (perfil) {
     if (enSuperadmin) { location.replace('dashboard.html'); return null; }
+    // Bloqueo: clínica desactivada o suspendida no puede operar.
+    const org = perfil.organizaciones || {};
+    const bloqueada = (org.activo === false) || (org.plan === 'suspendido');
+    if (bloqueada) {
+      await supabaseClient.auth.signOut();
+      alert('El acceso de tu clínica está suspendido. Por favor, contacta al administrador de la plataforma.');
+      location.replace('/index.html');
+      return null;
+    }
   }
 
   const menu = (esSuperadmin && !impersonando) ? NAV_SUPERADMIN : NAV_ITEMS;

@@ -8,7 +8,7 @@
 </head>
 <body class="login-page">
   <img class="login-logo" src="assets/img/logo.png" alt="AIVIMED" onerror="this.style.display='none'" />
-  <div class="login-card">
+  <div class="login-card" id="login-card">
     <h1>AIVIMED</h1>
     <p class="subtitle">Salud Integral</p>
     <form id="login-form">
@@ -25,6 +25,25 @@
     </form>
   </div>
 
+  <!-- Restablecer contraseña (se muestra al llegar desde el correo de recuperación) -->
+  <div class="login-card" id="recovery-card" style="display:none;">
+    <h1>Nueva contraseña</h1>
+    <p class="subtitle">Elige tu nueva contraseña</p>
+    <form id="recovery-form">
+      <div class="form-group">
+        <label for="new-password">Nueva contraseña</label>
+        <input type="password" id="new-password" required minlength="6" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label for="new-password2">Repetir contraseña</label>
+        <input type="password" id="new-password2" required minlength="6" autocomplete="new-password" />
+      </div>
+      <button type="submit" style="width:100%;">Guardar contraseña</button>
+      <p class="error-message" id="recovery-error"></p>
+      <p id="recovery-ok" style="color:var(--color-success);font-size:.9rem;text-align:center;"></p>
+    </form>
+  </div>
+
   <script src="assets/vendor/supabase.min.js"></script>
   <script src="assets/js/supabaseClient.js"></script>
   <script>
@@ -38,10 +57,35 @@
       } catch (e) { return 'pages/dashboard.html'; }
     }
 
+    // ¿Llegamos desde el correo de restablecimiento de contraseña?
+    const enRecovery = /type=recovery/.test(location.hash);
+    function mostrarRecovery() {
+      document.getElementById('login-card').style.display = 'none';
+      document.getElementById('recovery-card').style.display = '';
+    }
+    if (enRecovery) mostrarRecovery();
+    supabaseClient.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') mostrarRecovery();
+    });
+
     (async () => {
+      if (enRecovery) return; // no redirigir: hay que fijar la nueva contraseña
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session) window.location.href = await destinoSegunRol();
     })();
+
+    document.getElementById('recovery-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('recovery-error'); const ok = document.getElementById('recovery-ok');
+      err.textContent = ''; ok.textContent = '';
+      const p1 = document.getElementById('new-password').value;
+      const p2 = document.getElementById('new-password2').value;
+      if (p1 !== p2) { err.textContent = 'Las contraseñas no coinciden.'; return; }
+      const { error } = await supabaseClient.auth.updateUser({ password: p1 });
+      if (error) { err.textContent = error.message; return; }
+      ok.textContent = '✓ Contraseña actualizada. Redirigiendo…';
+      setTimeout(async () => { window.location.href = await destinoSegunRol(); }, 1200);
+    });
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
