@@ -167,8 +167,8 @@ async function initLayout(activeKey) {
       </div>
       <nav>${navLinks}</nav>
       <div class="sidebar-footer">
-        ${impersonando ? `<button id="salir-clinica-btn" style="width:100%;margin-bottom:0.5rem;background:var(--color-accent);border:none;color:#1a2320;">← Volver a la Torre</button>` : ''}
-        <button id="logout-btn" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);box-shadow:none;">Cerrar sesión</button>
+        ${impersonando ? `<button id="salir-clinica-btn" style="width:100%;margin-bottom:0.5rem;background:var(--color-accent);border:none;color:#3d2f0a;">← Volver a la Torre</button>` : ''}
+        <button id="logout-btn" class="btn-secondary" style="width:100%;">Cerrar sesión</button>
       </div>
     `;
 
