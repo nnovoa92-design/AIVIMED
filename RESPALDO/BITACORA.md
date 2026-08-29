@@ -3,6 +3,7 @@
 Registro cronológico de lo construido. Lo más reciente arriba.
 
 ## 2026-07
+- **SaaS multi-clínica (EN CURSO):** decisión de convertir AIVIMED en plataforma multi-tenant para vender a otras clínicas. Proyecto Supabase DEDICADO (nuevo, separado del "mundial"). Empezando por la base de seguridad. Esquema en `sql/saas/01_schema_multitenant.sql` (organizaciones + perfiles con roles superadmin/admin/profesional/recepcion + organizacion_id en cada tabla + RLS de aislamiento con current_org()/is_superadmin()). Pendiente: crear proyecto nuevo, migrar datos de AIVIMED como 1ª organización, adaptar app a tenant, torre de control súper-admin, endurecimiento (storage privado, funciones públicas por org).
 - **Plantilla de consentimiento Ácido Hialurónico** cargada desde el formulario real de AIVIMED + puntos legales agregados (veracidad, contraindicaciones ampliadas, Ley 19.628, derecho a revocar, autorización publicitaria separada/opcional). Archivo: `sql/plantilla_acido_hialuronico.sql`. NOTA: cuando la clienta envíe formularios reales de otros procedimientos, transcribirlos igual como plantilla del servicio correspondiente.
 - **Carpeta RESPALDO** creada (PROYECTO.md, RESPALDO.md, BITACORA.md) como respaldo maestro del proyecto.
 - **Configuración:** al elegir un servicio, el cuadro de consentimiento precarga el texto estándar del procedimiento (antes salía en blanco). Botón "Restaurar texto estándar".
