@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Torre de Control Global · Súper-Admin</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .kpi-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+    .kpi { background:var(--color-surface); border-radius:var(--radius); box-shadow:var(--shadow-sm); padding:1.1rem 1.25rem; display:flex; align-items:center; gap:.9rem; }
+    .kpi .ic { width:48px;height:48px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.4rem;background:var(--color-primary-light);color:var(--color-primary-dark); }
+    .kpi .val { font-family:var(--font-display,serif);font-style:italic;font-size:1.6rem;font-weight:700;color:var(--color-primary-dark);line-height:1; }
+    .kpi .lbl { font-size:.78rem;color:var(--color-text-muted);margin-top:.15rem; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Torre de Control Global</h1></header>
+      <div class="content">
+
+        <div class="kpi-grid" id="kpis"></div>
+
+        <!-- Clínicas -->
+        <div class="card">
+          <h2 style="margin-top:0;">Clínicas</h2>
+          <table>
+            <thead><tr><th>Clínica</th><th>Slug</th><th>Plan</th><th>Usuarios</th><th>Pacientes</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody id="orgs-body"><tr><td colspan="7">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+
+        <!-- Crear clínica -->
+        <div class="card" style="margin-top:1rem;">
+          <h2 style="margin-top:0;">Crear clínica nueva</h2>
+          <form id="org-form" class="form-row" style="align-items:flex-end;">
+            <div class="form-group" style="flex:2;"><label>Nombre de la clínica *</label><input id="org-nombre" required placeholder="Ej: Centro Belleza Sur" /></div>
+            <div class="form-group" style="flex:1;"><label>Slug (para URL) *</label><input id="org-slug" required placeholder="ej: belleza-sur" /></div>
+            <div class="form-group" style="flex:0;"><button type="submit">Crear clínica</button></div>
+          </form>
+          <p class="error-message" id="org-error"></p>
+          <p style="font-size:.8rem;color:var(--color-text-muted);">El slug es un identificador corto en minúsculas y sin espacios (se usará para la URL de reserva de cada clínica).</p>
+        </div>
+
+        <!-- Asignar usuario a clínica -->
+        <div class="card" style="margin-top:1rem;">
+          <h2 style="margin-top:0;">Asignar usuario a una clínica</h2>
+          <p style="font-size:.85rem;color:var(--color-text-muted);margin-top:0;">
+            Paso 1: crea el login del usuario en Supabase → Authentication → Users → Add user.<br>
+            Paso 2: aquí lo asignas a una clínica con su rol.
+          </p>
+          <form id="user-form" class="form-row" style="align-items:flex-end;">
+            <div class="form-group" style="flex:2;"><label>Correo del usuario *</label><input type="email" id="u-email" required placeholder="correo del login ya creado" /></div>
+            <div class="form-group" style="flex:2;"><label>Nombre</label><input id="u-nombre" placeholder="Nombre a mostrar" /></div>
+            <div class="form-group" style="flex:2;"><label>Clínica *</label><select id="u-org" required><option value="">Seleccionar…</option></select></div>
+            <div class="form-group" style="flex:1;"><label>Rol *</label>
+              <select id="u-rol"><option value="admin">Admin</option><option value="profesional">Profesional</option><option value="recepcion">Recepción</option></select>
+            </div>
+            <div class="form-group" style="flex:0;"><button type="submit">Asignar</button></div>
+          </form>
+          <p class="error-message" id="user-error"></p>
+          <p id="user-ok" style="color:var(--color-success);font-size:.85rem;"></p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    let orgs = [];
+
+    const kpi = (icon, val, lbl) => `<div class="kpi"><div class="ic">${icon}</div><div><div class="val">${val}</div><div class="lbl">${lbl}</div></div></div>`;
+
+    async function cargar() {
+      const [{ data: organizaciones }, { data: perfiles }, { data: pacientes }] = await Promise.all([
+        supabaseClient.from('organizaciones').select('*').order('nombre'),
+        supabaseClient.from('perfiles').select('organizacion_id, rol, email'),
+        supabaseClient.from('pacientes').select('organizacion_id'),
+      ]);
+      orgs = organizaciones || [];
+
+      // conteos por organización
+      const usuariosPorOrg = {}, pacientesPorOrg = {};
+      (perfiles || []).forEach(p => { if (p.organizacion_id) usuariosPorOrg[p.organizacion_id] = (usuariosPorOrg[p.organizacion_id]||0)+1; });
+      (pacientes || []).forEach(p => { pacientesPorOrg[p.organizacion_id] = (pacientesPorOrg[p.organizacion_id]||0)+1; });
+
+      // KPIs globales
+      document.getElementById('kpis').innerHTML = [
+        kpi('◎', orgs.length, 'Clínicas'),
+        kpi('👥', (perfiles||[]).filter(p=>p.organizacion_id).length, 'Usuarios de clínicas'),
+        kpi('♥', (pacientes||[]).length, 'Pacientes (todas)'),
+        kpi('✓', orgs.filter(o=>o.activo).length, 'Clínicas activas'),
+      ].join('');
+
+      // tabla de clínicas
+      const tb = document.getElementById('orgs-body');
+      tb.innerHTML = orgs.length ? orgs.map(o => `<tr>
+        <td><strong>${o.nombre}</strong></td>
+        <td>${o.slug}</td>
+        <td>${o.plan}</td>
+        <td>${usuariosPorOrg[o.id]||0}</td>
+        <td>${pacientesPorOrg[o.id]||0}</td>
+        <td>${o.activo ? '<span class="badge badge-green">Activa</span>' : '<span class="badge badge-red">Inactiva</span>'}</td>
+        <td><button class="btn-secondary btn-sm toggle-btn" data-id="${o.id}" data-activo="${o.activo}">${o.activo ? 'Desactivar' : 'Activar'}</button></td>
+      </tr>`).join('') : '<tr><td colspan="7">Aún no hay clínicas.</td></tr>';
+
+      tb.querySelectorAll('.toggle-btn').forEach(b => b.addEventListener('click', async () => {
+        const nuevo = b.dataset.activo !== 'true';
+        await supabaseClient.from('organizaciones').update({ activo: nuevo }).eq('id', b.dataset.id);
+        await cargar();
+      }));
+
+      // selector de clínicas del formulario de usuarios
+      const sel = document.getElementById('u-org');
+      sel.innerHTML = '<option value="">Seleccionar…</option>' + orgs.map(o => `<option value="${o.id}">${o.nombre}</option>`).join('');
+    }
+
+    // Crear clínica
+    document.getElementById('org-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('org-error'); err.textContent = '';
+      const nombre = document.getElementById('org-nombre').value.trim();
+      const slug = document.getElementById('org-slug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'-');
+      if (!nombre || !slug) { err.textContent = 'Completa nombre y slug.'; return; }
+      const { error } = await supabaseClient.from('organizaciones').insert({ nombre, slug, plan: 'trial', activo: true });
+      if (error) { err.textContent = error.message.includes('duplicate') ? 'Ese slug ya existe, usa otro.' : error.message; return; }
+      document.getElementById('org-nombre').value = ''; document.getElementById('org-slug').value = '';
+      await cargar();
+    });
+
+    // Asignar usuario
+    document.getElementById('user-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('user-error'); const ok = document.getElementById('user-ok');
+      err.textContent = ''; ok.textContent = '';
+      const { data, error } = await supabaseClient.rpc('sa_asignar_usuario', {
+        p_email: document.getElementById('u-email').value.trim(),
+        p_org_id: document.getElementById('u-org').value,
+        p_rol: document.getElementById('u-rol').value,
+        p_nombre: document.getElementById('u-nombre').value.trim(),
+      });
+      if (error) { err.textContent = error.message; return; }
+      if (data === 'NO_USER') { err.textContent = 'Ese correo no tiene login todavía. Créalo primero en Supabase → Authentication → Users.'; return; }
+      ok.textContent = '✓ Usuario asignado a la clínica.';
+      document.getElementById('u-email').value = ''; document.getElementById('u-nombre').value = '';
+      await cargar();
+    });
+
+    (async () => {
+      const s = await initLayout('superadmin');
+      if (!s) return;
+      await cargar();
+    })();
+  </script>
+</body>
+</html>

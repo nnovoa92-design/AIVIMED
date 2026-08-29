@@ -39,6 +39,23 @@ async function getConfig() {
   return _configCache;
 }
 
+// Perfil del usuario actual (rol + organización), cacheado
+let _perfilCache = null;
+async function getMiPerfil() {
+  if (_perfilCache) return _perfilCache;
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) return null;
+  const { data } = await supabaseClient.from('perfiles')
+    .select('rol, organizacion_id, nombre, email').eq('id', user.id).maybeSingle();
+  _perfilCache = data || { rol: 'recepcion', organizacion_id: null };
+  return _perfilCache;
+}
+
+// Menú del súper-admin (dueño de la plataforma)
+const NAV_SUPERADMIN = [
+  { key: 'superadmin', icon: '◎', label: 'Torre de Control Global', href: 'superadmin.html' },
+];
+
 const METODOS_PAGO = {
   efectivo:        'Efectivo',
   tarjeta_debito:  'Tarjeta débito',
@@ -81,9 +98,19 @@ async function initLayout(activeKey) {
   const session = await requireAuth();
   if (!session) return null;
 
+  // Rol del usuario → enrutamiento: el súper-admin va a su Torre de Control;
+  // los usuarios de clínica no pueden entrar al panel de súper-admin.
+  const perfil = await getMiPerfil();
+  const esSuperadmin = !!perfil && perfil.rol === 'superadmin';
+  const enSuperadmin = location.pathname.endsWith('superadmin.html');
+  if (esSuperadmin && !enSuperadmin) { location.href = 'superadmin.html'; return null; }
+  if (!esSuperadmin && enSuperadmin) { location.href = 'dashboard.html'; return null; }
+
+  const menu = esSuperadmin ? NAV_SUPERADMIN : NAV_ITEMS;
+
   const sidebar = document.getElementById('sidebar');
   if (sidebar) {
-    const navLinks = NAV_ITEMS.map(item => {
+    const navLinks = menu.map(item => {
       if (item.section) return `<div class="nav-section">${item.section}</div>`;
       const cls = item.key === activeKey ? ' class="active"' : '';
       const iconSpan = item.icon ? `<span style="font-style:normal;font-size:1rem;opacity:0.7;width:1.2rem;text-align:center;">${item.icon}</span>` : '';
@@ -91,9 +118,12 @@ async function initLayout(activeKey) {
     }).join('');
 
     const logoTag = `<img class="brand-logo" src="../assets/img/logo.png" alt="" onerror="this.style.display='none'">`;
+    const brandTxt = esSuperadmin
+      ? `<span>Plataforma<span class="brand-sub">Súper-Admin</span></span>`
+      : `<span>AIVIMED<span class="brand-sub">Salud Integral</span></span>`;
     sidebar.innerHTML = `
       <div class="brand">
-        ${logoTag}<span>AIVIMED<span class="brand-sub">Salud Integral</span></span>
+        ${logoTag}${brandTxt}
       </div>
       <nav>${navLinks}</nav>
       <div class="sidebar-footer">

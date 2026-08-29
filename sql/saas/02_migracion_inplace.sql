@@ -22,8 +22,9 @@ create table if not exists organizaciones (
 insert into organizaciones (nombre, slug) values ('AIVIMED', 'aivimed')
 on conflict (slug) do nothing;
 
--- 3) perfiles: agregar organizacion_id + permitir rol 'superadmin'
+-- 3) perfiles: agregar organizacion_id, email + permitir rol 'superadmin'
 alter table perfiles add column if not exists organizacion_id uuid references organizaciones(id) on delete cascade;
+alter table perfiles add column if not exists email text;
 alter table perfiles drop constraint if exists perfiles_rol_check;
 alter table perfiles add constraint perfiles_rol_check check (rol in ('superadmin','admin','profesional','recepcion'));
 

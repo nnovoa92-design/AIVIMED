@@ -28,9 +28,19 @@
   <script src="assets/vendor/supabase.min.js"></script>
   <script src="assets/js/supabaseClient.js"></script>
   <script>
+    // Envía al usuario a su destino según el rol: súper-admin → panel global.
+    async function destinoSegunRol() {
+      try {
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (!user) return 'pages/dashboard.html';
+        const { data } = await supabaseClient.from('perfiles').select('rol').eq('id', user.id).maybeSingle();
+        return (data && data.rol === 'superadmin') ? 'pages/superadmin.html' : 'pages/dashboard.html';
+      } catch (e) { return 'pages/dashboard.html'; }
+    }
+
     (async () => {
       const { data: { session } } = await supabaseClient.auth.getSession();
-      if (session) window.location.href = 'pages/dashboard.html';
+      if (session) window.location.href = await destinoSegunRol();
     })();
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -42,7 +52,7 @@
         password: document.getElementById('password').value,
       });
       if (error) { errorEl.textContent = 'Credenciales inválidas. Intenta nuevamente.'; return; }
-      window.location.href = 'pages/dashboard.html';
+      window.location.href = await destinoSegunRol();
     });
   </script>
 </body>
