@@ -115,7 +115,9 @@ async function initLayout(activeKey) {
   const perfil = await getMiPerfil();
   const esSuperadmin = !!perfil && perfil.rol === 'superadmin';
   const impersonando = esSuperadmin && !!actingOrg();
-  const enSuperadmin = location.pathname.endsWith('superadmin.html');
+  // Cloudflare puede servir sin ".html" (/pages/superadmin). Detectamos por
+  // el nombre, no por la extensión, para no caer en un bucle de redirección.
+  const enSuperadmin = /superadmin/.test(location.pathname);
 
   if (esSuperadmin) {
     if (!impersonando && !enSuperadmin) { location.replace('superadmin.html'); return null; }
