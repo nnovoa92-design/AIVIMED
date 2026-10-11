@@ -80,6 +80,12 @@ Uso **operacional interno** (dueñas/equipo). Aparte tiene páginas públicas pa
 8. `v6_config.sql` — tabla `config` (empresa + operacional).
 9. `v7_firma_auditoria.sql` — consentimientos.(firma_user_agent/firma_ip) + RPC firmar con auditoría.
 10. `v8_origen_turno.sql` — turnos.origen (interno/online).
+11. `saas/02`–`saas/06` — multi-clínica (ver BITACORA 2026-07/08): organizaciones, RLS por `current_org()`, súper-admin/impersonación, páginas públicas por slug.
+12. `v9_unificar_rut_telefono.sql` — RUT único POR CLÍNICA (antes global) + unifica formato de RUT/teléfonos ya guardados (respaldo en `respaldo_formatos`).
+
+### Formato de RUT y teléfono (decisión 2026-10)
+- Un solo formato en toda la app, vía `assets/js/formatos.js`: RUT `12.345.678-9`, teléfono `+56 9 1234 5678`. Se aplica por id de casilla / `type="tel"` (ver BITACORA). El RUT vive en la columna `pacientes.dni`.
+- Privacidad en páginas públicas (regla fija): nunca mostrar datos personales completos a quien solo escribe un RUT; solo primer nombre y `•••• 5678`, con opción de indicar otro teléfono.
 
 ## 10. Pendientes / próximos pasos
 - Definir con AIVIMED la **política de cotización** (cuestionario enviado) → cargarla en Configuración.

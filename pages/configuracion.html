@@ -20,7 +20,7 @@
           <form id="empresa-form">
             <div class="form-row">
               <div class="form-group"><label>Razón social / Nombre</label><input id="razon_social" /></div>
-              <div class="form-group"><label>RUT</label><input id="rut" /></div>
+              <div class="form-group"><label>RUT</label><input id="rut" placeholder="12.345.678-9" maxlength="12" autocomplete="off" /></div>
             </div>
             <div class="form-row">
               <div class="form-group"><label>Correo</label><input type="email" id="correo" /></div>
@@ -85,6 +85,7 @@
 
   <script src="../assets/vendor/supabase.min.js"></script>
   <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/formatos.js"></script>
   <script src="../assets/js/layout.js"></script>
   <script>
     const EMPRESA_FIELDS = ['razon_social','rut','correo','telefono','direccion','instagram'];

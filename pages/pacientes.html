@@ -20,14 +20,14 @@
             <div class="form-row">
               <div class="form-group"><label>Nombre *</label><input id="nombre" required /></div>
               <div class="form-group"><label>Apellido *</label><input id="apellido" required /></div>
-              <div class="form-group"><label>RUT</label><input id="dni" /></div>
+              <div class="form-group"><label>RUT</label><input id="dni" placeholder="12.345.678-9" maxlength="12" autocomplete="off" /></div>
               <div class="form-group"><label>Fecha de nacimiento</label><input type="date" id="fecha_nacimiento" /></div>
             </div>
             <div class="form-row">
-              <div class="form-group"><label>Teléfono</label><input id="telefono" /></div>
+              <div class="form-group"><label>Teléfono</label><input id="telefono" placeholder="+56 9 1234 5678" /></div>
               <div class="form-group"><label>Email</label><input type="email" id="email" /></div>
               <div class="form-group"><label>Contacto emergencia</label><input id="contacto_emergencia_nombre" /></div>
-              <div class="form-group"><label>Tel. emergencia</label><input id="contacto_emergencia_telefono" /></div>
+              <div class="form-group"><label>Tel. emergencia</label><input id="contacto_emergencia_telefono" placeholder="+56 9 1234 5678" /></div>
             </div>
             <div class="form-group"><label>Dirección</label><input id="direccion" /></div>
             <div class="form-group"><label>Antecedentes / Alergias / Medicación</label><textarea id="antecedentes" rows="2"></textarea></div>
@@ -57,6 +57,7 @@
 
   <script src="../assets/vendor/supabase.min.js"></script>
   <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/formatos.js"></script>
   <script src="../assets/js/layout.js"></script>
   <script>
     const FIELDS = ['nombre','apellido','dni','fecha_nacimiento','telefono','email',
@@ -113,7 +114,17 @@
 
     document.getElementById('search-input').addEventListener('input', e => {
       const t = e.target.value.trim().toLowerCase();
-      renderTable(t ? cache.filter(p => `${p.nombre} ${p.apellido}`.toLowerCase().includes(t) || (p.dni||'').includes(t)) : cache);
+      // RUT y teléfono se comparan sin puntos, guion ni espacios (solo si se escribieron ≥3 dígitos,
+      // para que buscar "karla" no coincida con RUT terminados en K).
+      const digitos = t.replace(/\D/g, '');
+      const porNumero = digitos.length >= 3;
+      const rutBuscado = rutLimpio(t);
+      renderTable(t ? cache.filter(p =>
+        `${p.nombre} ${p.apellido}`.toLowerCase().includes(t)
+        || (p.dni || '').toLowerCase().includes(t)
+        || (porNumero && rutLimpio(p.dni).includes(rutBuscado))
+        || (porNumero && String(p.telefono || '').replace(/\D/g, '').includes(digitos))
+      ) : cache);
     });
 
     document.getElementById('cancel-btn').addEventListener('click', clearForm);
