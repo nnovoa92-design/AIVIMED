@@ -26,9 +26,32 @@ let CONFIG_DEFAULT = {
   telefono: '', instagram: '', iva_pct: 19, politica_cotizacion: '',
   hora_apertura: '09:30', hora_cierre: '19:30', sab_apertura: '10:00', sab_cierre: '14:00',
 };
+// Horario por día (0 = domingo … 6 = sábado). Usa `horario_semana` de la configuración; si la
+// clínica aún no lo definió, se deriva de las columnas antiguas (lun–vie, sábado; domingo cerrado).
+// Misma lógica de respaldo que la función SQL horario_clinica().
+const DIAS_NOMBRE = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+function horarioSemana(cfg) {
+  const c = cfg || {};
+  const h = (c.horario_semana && typeof c.horario_semana === 'object') ? c.horario_semana : null;
+  const out = {};
+  for (let i = 0; i < 7; i++) {
+    const d = h && h[i];
+    if (d && typeof d === 'object') {
+      out[i] = { abierto: d.abierto === true, desde: d.desde || '09:30', hasta: d.hasta || '19:30' };
+    } else if (i === 0) {
+      out[i] = { abierto: false, desde: '10:00', hasta: '14:00' };
+    } else if (i === 6) {
+      out[i] = { abierto: true, desde: c.sab_apertura || '10:00', hasta: c.sab_cierre || '14:00' };
+    } else {
+      out[i] = { abierto: true, desde: c.hora_apertura || '09:30', hasta: c.hora_cierre || '19:30' };
+    }
+  }
+  return out;
+}
+
 let _configCache = null;
-async function getConfig() {
-  if (_configCache) return _configCache;
+async function getConfig(fresh) {
+  if (_configCache && !fresh) return _configCache;
   try {
     // RLS ya limita la config a la clínica activa (la del usuario, o la que
     // el súper-admin está administrando). Puede no existir aún → defaults.

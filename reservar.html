@@ -265,16 +265,46 @@
       document.title = 'Reserva online — ' + nombreClinica;
       document.querySelectorAll('.brand-name').forEach(el => el.textContent = nombreClinica);
       const cf = data.config || {};
-      const lv = { desde: cf.hora_apertura || '09:30', hasta: cf.hora_cierre || '19:30' };
-      HORARIOS = { 1:lv, 2:lv, 3:lv, 4:lv, 5:lv, 6:{ desde: cf.sab_apertura || '10:00', hasta: cf.sab_cierre || '14:00' } };
+      // Horario por día (0 = domingo … 6 = sábado). Solo los días abiertos figuran en HORARIOS.
+      // Si el servidor aún no lo entrega (falta v12), se usa el horario antiguo: L-V y sábado.
+      const sem = data.horario_semana || cf.horario_semana || null;
+      HORARIOS = {};
+      if (sem) {
+        for (let i = 0; i < 7; i++) {
+          const d = sem[i] || sem[String(i)];
+          if (d && d.abierto === true && d.desde && d.hasta) HORARIOS[i] = { desde: d.desde, hasta: d.hasta };
+        }
+      } else {
+        const lv = { desde: cf.hora_apertura || '09:30', hasta: cf.hora_cierre || '19:30' };
+        HORARIOS = { 1:lv, 2:lv, 3:lv, 4:lv, 5:lv, 6:{ desde: cf.sab_apertura || '10:00', hasta: cf.sab_cierre || '14:00' } };
+      }
       CFG.telefono = cf.telefono || '';
       CFG.correo = cf.correo || 'aivimed.salud@gmail.com';
       CATALOGO.categorias = data.categorias || [];
       CATALOGO.servicios = data.servicios || [];
       const fh = document.getElementById('footer-horario');
-      if (fh) fh.textContent = `Lunes a Viernes ${lv.desde} – ${lv.hasta} · Sábados ${HORARIOS[6].desde} – ${HORARIOS[6].hasta}`;
+      if (fh) fh.textContent = resumenHorario();
       return true;
     }
+    // "Lun a Vie 09:30 – 19:30 · Sáb 10:00 – 14:00" (agrupa días seguidos con el mismo horario)
+    function resumenHorario() {
+      const orden = [1, 2, 3, 4, 5, 6, 0];
+      const corto = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+      const partes = [];
+      let i = 0;
+      while (i < orden.length) {
+        const h = HORARIOS[orden[i]];
+        if (!h) { i++; continue; }
+        let j = i;
+        while (j + 1 < orden.length && HORARIOS[orden[j + 1]]
+               && HORARIOS[orden[j + 1]].desde === h.desde && HORARIOS[orden[j + 1]].hasta === h.hasta) j++;
+        const dias = j > i ? `${corto[orden[i]]} a ${corto[orden[j]]}` : corto[orden[i]];
+        partes.push(`${dias} ${h.desde} – ${h.hasta}`);
+        i = j + 1;
+      }
+      return partes.length ? partes.join(' · ') : 'Sin horarios disponibles por ahora';
+    }
+
     const SLOT_MIN = 60;
     const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
     const DIAS_CAL = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
@@ -394,7 +424,7 @@
         const date = new Date(calYear, calMonth, d);
         const dow = date.getDay();
         const isPast = date < hoy;
-        const isClosed = dow === 0;
+        const isClosed = !HORARIOS[dow];            // día cerrado según el horario de la clínica
         const disabled = isPast || isClosed;
         const isToday = date.getTime() === hoy.getTime();
         const isSel = selectedDate && date.toDateString() === selectedDate.toDateString();
@@ -431,24 +461,43 @@
       // Cargar turnos existentes de ese día (rango local para evitar desfase de zona horaria)
       const dayStart = new Date(selectedDate); dayStart.setHours(0,0,0,0);
       const dayEnd = new Date(selectedDate); dayEnd.setHours(23,59,59,999);
-      // Horarios ocupados vía RPC seguro (no expone datos de pacientes)
-      const { data: ocupados } = await sb.rpc('horarios_ocupados', {
+      // Ocupación del día (turnos con su duración + bloqueos) vía RPC seguro: solo intervalos,
+      // sin datos de pacientes.
+      let intervalos = null;
+      const r1 = await sb.rpc('ocupacion_publica', {
         p_org: ORG_ID,
         p_desde: dayStart.toISOString(),
         p_hasta: dayEnd.toISOString(),
       });
-      turnosOcupados = (ocupados || []).map(t => new Date(t).toTimeString().slice(0,5));
+      if (!r1.error && Array.isArray(r1.data)) {
+        intervalos = r1.data.map(x => ({ desde: new Date(x.desde), hasta: new Date(x.hasta) }));
+      } else {
+        // Servidor sin la actualización v12: solo se conoce la hora de inicio de cada turno
+        const { data: ocupados } = await sb.rpc('horarios_ocupados', {
+          p_org: ORG_ID,
+          p_desde: dayStart.toISOString(),
+          p_hasta: dayEnd.toISOString(),
+        });
+        intervalos = (ocupados || []).map(t => { const d = new Date(t); return { desde: d, hasta: new Date(d.getTime() + SLOT_MIN * 60000) }; });
+      }
+
+      // Horas que se reservan: duración del servicio en horas completas (la clínica confirma el tiempo final)
+      const durReserva = Math.max(SLOT_MIN, Math.ceil((selectedService.duracion_min || SLOT_MIN) / SLOT_MIN) * SLOT_MIN);
 
       // No mostrar slots pasados si es hoy
       const ahora = new Date();
       const esHoy = selectedDate.toDateString() === ahora.toDateString();
 
-      let html = '<div class="slots-grid">';
+      let html = durReserva > SLOT_MIN
+        ? `<p style="font-size:0.8rem;color:var(--muted);margin:0.25rem 0 0;">Este servicio reserva aproximadamente ${durReserva / 60} horas seguidas; solo ves los horarios con ese tiempo libre. La clínica te confirma el tiempo final.</p>`
+        : '';
+      html += '<div class="slots-grid">';
       for (const slot of slots) {
-        const taken = turnosOcupados.includes(slot);
         const [sh, sm] = slot.split(':').map(Number);
         const slotTime = new Date(selectedDate);
         slotTime.setHours(sh, sm, 0, 0);
+        const slotFin = new Date(slotTime.getTime() + durReserva * 60000);
+        const taken = intervalos.some(iv => iv.desde < slotFin && iv.hasta > slotTime);
         const isPast = esHoy && slotTime <= ahora;
 
         if (isPast) {
@@ -635,8 +684,22 @@
         if (!telefono) { btn.disabled = false; errorEl.textContent = 'Indica un teléfono de contacto.'; return; }
         ({ error: errReserva } = await sb.rpc('crear_reserva', params));
       }
-      if (errReserva) { btn.disabled = false; errorEl.textContent = 'Error al reservar: ' + errReserva.message; return; }
+      if (errReserva) {
+        btn.disabled = false;
+        if (/horario|disponible|atiende/i.test(errReserva.message || '')) {
+          // Otra persona tomó la hora (o la clínica la bloqueó): se vuelve a elegir con la lista al día
+          selectedSlot = null;
+          document.getElementById('btn-next-2').disabled = true;
+          document.getElementById('error-2').textContent = 'Ese horario ya no está disponible. Elige otro, por favor.';
+          goTo(2);
+          await renderSlots();
+          return;
+        }
+        errorEl.textContent = 'Error al reservar: ' + errReserva.message;
+        return;
+      }
       btn.disabled = false;
+      document.getElementById('error-2').textContent = '';
 
       // Confirmación: a nombre del primer nombre (no se muestra apellido)
       const aNombreDe = reconocida ? (pacienteConocida.nombre || '') : primerNombre(nombre);

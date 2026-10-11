@@ -22,7 +22,8 @@
     .hora-slot:hover { background:var(--color-primary-light); }
 
     /* Grilla semana */
-    .week-grid { display:grid; grid-template-columns:70px repeat(6,1fr); border:1px solid var(--color-border); border-radius:var(--radius); overflow:hidden; font-size:0.78rem; }
+    .week-grid { display:grid; grid-template-columns:70px repeat(7,1fr); border:1px solid var(--color-border); border-radius:var(--radius); overflow:hidden; font-size:0.78rem; }
+    .week-header.cerrado { background:#8a9a95; }
     .week-header { padding:0.5rem 0.3rem; text-align:center; font-weight:600; background:var(--color-primary-dark); color:#fff; font-size:0.72rem; border-right:1px solid rgba(255,255,255,0.1); }
     .week-header.corner { background:var(--color-primary-dark); }
     .week-hora { padding:0.3rem; font-size:0.72rem; color:var(--color-text-muted); border-bottom:1px solid var(--color-border); border-right:1px solid var(--color-border); background:var(--color-bg); text-align:center; min-height:40px; display:flex; align-items:center; justify-content:center; }
@@ -54,6 +55,29 @@
     .slot-turno.ausente { border-left-color:var(--color-warning); background:#fdf0d3; }
 
     .dia-cerrado { background:var(--color-bg); color:var(--color-text-muted); text-align:center; padding:2rem; font-style:italic; border-radius:var(--radius); }
+
+    /* Turnos de varias horas: las horas siguientes quedan marcadas como ocupadas */
+    .slot-turno.cont { opacity:0.85; border-left-style:dashed; font-size:0.7rem; padding:0.15rem 0.4rem; }
+    .month-turno.cont { opacity:0.8; border-left-style:dashed; }
+
+    /* Bloqueos de agenda */
+    .hora-slot.bloqueado, .week-cell.bloqueado, .month-cell.bloqueado {
+      background:repeating-linear-gradient(45deg, #eef1f0, #eef1f0 8px, #e3e8e6 8px, #e3e8e6 16px);
+    }
+    .bloqueo-tag { display:inline-block; background:#5f716c; color:#fff; border-radius:4px; padding:0.1rem 0.4rem;
+      font-size:0.68rem; margin-bottom:0.2rem; cursor:pointer; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .bloqueo-tag:hover { background:var(--color-danger); }
+    .bloqueo-item { display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.45rem 0;
+      border-bottom:1px solid var(--color-border); font-size:0.85rem; }
+    .bloqueo-item:last-child { border-bottom:none; }
+
+    /* Ventana de confirmación con mensaje */
+    .modal-fondo { position:fixed; inset:0; background:rgba(20,50,40,0.45); z-index:400; display:flex; align-items:flex-start;
+      justify-content:center; padding:2rem 1rem; overflow:auto; }
+    .modal-fondo[hidden] { display:none; }
+    .modal-caja { background:var(--color-surface); border-radius:var(--radius); box-shadow:var(--shadow-lg); width:100%; max-width:520px; padding:1.5rem; }
+    .modal-caja textarea { min-height:230px; font-size:0.9rem; line-height:1.5; }
+    .campo-hint { display:block; margin-top:0.25rem; font-size:0.76rem; color:var(--color-text-muted); }
   </style>
 </head>
 <body>
@@ -109,7 +133,14 @@
             </div>
             <div class="form-row">
               <div class="form-group"><label>Fecha y hora *</label><input type="datetime-local" id="fecha_hora" required /></div>
-              <div class="form-group"><label>Duración (min)</label><input type="number" id="duracion_min" min="0" value="60" /></div>
+              <div class="form-group"><label>Duración (horas que se bloquean)</label>
+                <select id="duracion_min">
+                  <option value="60">1 hora</option><option value="120">2 horas</option><option value="180">3 horas</option>
+                  <option value="240">4 horas</option><option value="300">5 horas</option><option value="360">6 horas</option>
+                  <option value="420">7 horas</option><option value="480">8 horas</option>
+                </select>
+                <small class="campo-hint">Al confirmar, esas horas quedan bloqueadas en la agenda y en la reserva online.</small>
+              </div>
               <div class="form-group"><label>Estado</label>
                 <select id="estado">
                   <option value="pendiente">Pendiente</option><option value="confirmado">Confirmado</option>
@@ -123,6 +154,34 @@
             <button type="button" id="delete-btn" class="btn-danger" style="display:none;">Eliminar</button>
             <p class="error-message" id="form-error"></p>
           </form>
+        </div>
+
+        <!-- Bloquear horario: una hora, un día o una semana -->
+        <div class="card" id="bloqueo-card" style="display:none;">
+          <h2 style="margin-top:0;">Bloquear horario</h2>
+          <p style="color:var(--color-text-muted);font-size:0.82rem;margin-top:0;">
+            Un horario bloqueado no se puede reservar online y se marca en la agenda. Para quitarlo, tócalo en la agenda o usa la lista de abajo.
+          </p>
+          <form id="bloqueo-form">
+            <div class="form-row">
+              <div class="form-group"><label for="bq-tipo">Qué bloquear</label>
+                <select id="bq-tipo">
+                  <option value="hora">Una hora o un tramo del día</option>
+                  <option value="dia">Un día completo</option>
+                  <option value="semana">Una semana completa</option>
+                </select>
+              </div>
+              <div class="form-group"><label for="bq-fecha" id="bq-fecha-lbl">Fecha</label><input type="date" id="bq-fecha" required /></div>
+              <div class="form-group" id="bq-desde-wrap"><label for="bq-desde">Desde</label><input type="time" id="bq-desde" value="09:30" /></div>
+              <div class="form-group" id="bq-hasta-wrap"><label for="bq-hasta">Hasta</label><input type="time" id="bq-hasta" value="10:30" /></div>
+            </div>
+            <div class="form-group"><label for="bq-motivo">Motivo (opcional)</label><input id="bq-motivo" placeholder="Ej: capacitación, feriado, trámite…" /></div>
+            <button type="submit" id="bq-guardar">Bloquear</button>
+            <button type="button" id="bq-cerrar" class="btn-secondary">Cerrar</button>
+            <p class="error-message" id="bq-error"></p>
+          </form>
+          <h3 style="font-size:0.95rem;margin:1rem 0 0.25rem;">Bloqueos vigentes y próximos</h3>
+          <div id="bq-lista"><span style="color:var(--color-text-muted);font-size:0.85rem;">Cargando…</span></div>
         </div>
 
         <!-- Controles -->
@@ -140,6 +199,7 @@
                 <button data-view="mes">Mes</button>
               </div>
               <button type="button" id="btn-hoy" class="btn-secondary btn-sm">Hoy</button>
+              <button type="button" id="btn-bloquear" class="btn-secondary btn-sm">🚫 Bloquear horario</button>
               <button type="button" id="btn-nuevo" class="btn btn-sm">+ Nuevo turno</button>
             </div>
           </div>
@@ -147,6 +207,23 @@
         </div>
 
       </div>
+    </div>
+  </div>
+
+  <!-- Mensaje al confirmar un turno (no pide cédula ni RUT) -->
+  <div class="modal-fondo" id="msg-modal" hidden>
+    <div class="modal-caja">
+      <h2 style="margin-top:0;">Turno confirmado ✓</h2>
+      <p style="color:var(--color-text-muted);font-size:0.85rem;margin-top:0;" id="msg-sub"></p>
+      <div class="form-group">
+        <label for="msg-texto">Mensaje para el paciente (puedes editarlo)</label>
+        <textarea id="msg-texto"></textarea>
+        <small class="campo-hint">No incluye ni pide cédula o RUT. Indica cuántas horas quedan reservadas para el paciente.</small>
+      </div>
+      <button type="button" id="msg-wa">Enviar por WhatsApp</button>
+      <button type="button" id="msg-copiar" class="btn-secondary">Copiar mensaje</button>
+      <button type="button" id="msg-cerrar" class="btn-secondary">Cerrar</button>
+      <p id="msg-aviso" style="font-size:0.82rem;color:var(--color-text-muted);margin-bottom:0;"></p>
     </div>
   </div>
 
@@ -160,9 +237,11 @@
       1:{desde:'09:30',hasta:'19:30'}, 2:{desde:'09:30',hasta:'19:30'}, 3:{desde:'09:30',hasta:'19:30'},
       4:{desde:'09:30',hasta:'19:30'}, 5:{desde:'09:30',hasta:'19:30'}, 6:{desde:'10:00',hasta:'14:00'},
     };
+    // Solo los días ABIERTOS tienen horario; un día cerrado no figura en HORARIOS (0 = domingo … 6 = sábado)
     function horariosDesdeConfig(cfg) {
-      const lv = { desde: cfg.hora_apertura || '09:30', hasta: cfg.hora_cierre || '19:30' };
-      HORARIOS = { 1:lv, 2:lv, 3:lv, 4:lv, 5:lv, 6:{ desde: cfg.sab_apertura || '10:00', hasta: cfg.sab_cierre || '14:00' } };
+      const sem = horarioSemana(cfg);
+      HORARIOS = {};
+      for (let i = 0; i < 7; i++) if (sem[i].abierto) HORARIOS[i] = { desde: sem[i].desde, hasta: sem[i].hasta };
     }
     const SLOT_MIN = 60;
     const DIAS_SEMANA = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -171,6 +250,18 @@
     let currentDate = new Date(); currentDate.setHours(0,0,0,0);
     let currentView = 'dia';
     let turnosCache = [];
+    let bloqueosCache = [];
+
+    // ── Duración y solapamientos (un turno puede ocupar varias horas) ──
+    const durMin = (t) => Math.max(Number(t.duracion_min) || 60, 30);
+    const turnoFin = (t) => new Date(new Date(t.fecha_hora).getTime() + durMin(t) * 60000);
+    function bloqueoEn(start, end) {
+      return bloqueosCache.find(b => new Date(b.desde) < end && new Date(b.hasta) > start) || null;
+    }
+    const hhmm = (d) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    function bloqueoTag(b) {
+      return `<div class="bloqueo-tag" data-bloqueo="${b.id}" title="Toca para quitar este bloqueo">🚫 Bloqueado${b.motivo ? ' · ' + htmlSeguro(b.motivo) : ''}</div>`;
+    }
     let pacientesCache = [];     // pacientes activos: id, nombre, apellido, dni, telefono, email
 
     // ── Helpers de fecha en hora LOCAL (evita el desfase de zona horaria) ──
@@ -205,18 +296,35 @@
 
     function getMonday(d) { const m=new Date(d); const day=m.getDay(); m.setDate(m.getDate()-(day===0?6:day-1)); m.setHours(0,0,0,0); return m; }
 
-    function turnoHTML(t, compact) {
-      const pac = t.pacientes ? `${t.pacientes.nombre} ${t.pacientes.apellido}` : '';
+    // slotStart: inicio del bloque que se está dibujando. Si el turno empezó antes, es una "continuación".
+    // Nombres y servicios se escapan: pueden venir de la reserva pública (texto escrito por el visitante).
+    function turnoHTML(t, compact, slotStart) {
+      const pac = t.pacientes ? `${t.pacientes.nombre} ${t.pacientes.apellido || ''}`.trim() : '';
       const srv = t.servicios?.nombre ?? '';
-      const hora = new Date(t.fecha_hora).toLocaleTimeString('es-AR',{timeStyle:'short'});
+      const ini = new Date(t.fecha_hora);
+      const hora = hhmm(ini);
+      const horaFin = hhmm(turnoFin(t));
       const online = t.origen === 'online';
+      const cont = !!slotStart && ini < slotStart;
+      const pacS = htmlSeguro(pac), srvS = htmlSeguro(srv);
+      if (cont) {
+        if (compact) return `<div class="month-turno cont ${t.estado}" data-id="${t.id}" title="${pacS} — continúa hasta las ${horaFin}">↳ ${htmlSeguro(pac.split(' ')[0]||'')}</div>`;
+        return `<div class="slot-turno cont ${t.estado}" data-id="${t.id}"><span class="slot-paciente">↳ ${pacS}</span> <span class="slot-servicio">continúa hasta las ${horaFin}</span></div>`;
+      }
       const onlineTag = online ? '<span style="background:#c5a44e;color:#fff;border-radius:4px;padding:0 4px;font-size:0.62rem;margin-left:3px;">ONLINE</span>' : '';
-      if (compact) return `<div class="month-turno ${t.estado}" data-id="${t.id}" title="${hora} ${pac} — ${srv}${online?' (reserva online)':''}">${online?'● ':''}${hora} ${pac.split(' ')[0]||''}</div>`;
-      return `<div class="slot-turno ${t.estado}" data-id="${t.id}"><span class="slot-paciente">${hora} — ${pac}</span>${onlineTag} <span class="slot-servicio">${srv}</span></div>`;
+      const rango = durMin(t) > 60 ? `${hora}–${horaFin}` : hora;
+      if (compact) return `<div class="month-turno ${t.estado}" data-id="${t.id}" title="${rango} ${pacS} — ${srvS}${online?' (reserva online)':''}">${online?'● ':''}${rango} ${htmlSeguro(pac.split(' ')[0]||'')}</div>`;
+      return `<div class="slot-turno ${t.estado}" data-id="${t.id}"><span class="slot-paciente">${rango} — ${pacS}</span>${onlineTag} <span class="slot-servicio">${srvS}</span></div>`;
     }
 
+    // Turnos que tocan el bloque [start, end): los que empiezan en él y los que vienen de uno anterior
     function turnosInRange(start, end) {
-      return turnosCache.filter(t => { const d=new Date(t.fecha_hora); return d>=start && d<end; });
+      return turnosCache.filter(t => {
+        const ini = new Date(t.fecha_hora);
+        if (ini >= start && ini < end) return true;
+        if (t.estado === 'cancelado') return false;            // un turno cancelado no ocupa horas
+        return ini < start && turnoFin(t) > start;
+      });
     }
 
     // ─── Vista DÍA ───
@@ -224,15 +332,23 @@
       const container = document.getElementById('agenda-container');
       const dow = currentDate.getDay();
       const slots = getSlots(dow);
-      if (!slots) { container.innerHTML='<div class="dia-cerrado">Domingo — Centro cerrado</div>'; return; }
+      if (!slots) {
+        const dayStart=new Date(currentDate); dayStart.setHours(0,0,0,0);
+        const dayEnd=new Date(dayStart); dayEnd.setDate(dayEnd.getDate()+1);
+        const b=bloqueoEn(dayStart,dayEnd);
+        container.innerHTML=`<div class="dia-cerrado">${DIAS_NOMBRE[dow]} — Cerrado según Configuración${b?'<br>'+bloqueoTag(b):''}</div>`;
+        bindSlotClicks(container);
+        return;
+      }
       let html='<div class="agenda-grid">';
       for (const slot of slots) {
         const [sh,sm]=slot.split(':').map(Number);
         const s=new Date(currentDate); s.setHours(sh,sm,0,0);
         const e=new Date(s.getTime()+SLOT_MIN*60000);
         const tt=turnosInRange(s,e);
+        const bq=bloqueoEn(s,e);
         const dt=`${ymd(currentDate)}T${slot}`;
-        html+=`<div class="hora-label">${slot}</div><div class="hora-slot" data-slot="${dt}">${tt.map(t=>turnoHTML(t,false)).join('')}</div>`;
+        html+=`<div class="hora-label">${slot}</div><div class="hora-slot${bq?' bloqueado':''}" data-slot="${dt}">${bq?bloqueoTag(bq):''}${tt.map(t=>turnoHTML(t,false,s)).join('')}</div>`;
       }
       html+='</div>';
       container.innerHTML=html;
@@ -243,14 +359,15 @@
     function renderSemana() {
       const container=document.getElementById('agenda-container');
       const mon=getMonday(currentDate);
-      // L-S (6 días, sin domingo)
+      // Lunes a domingo (los días cerrados según Configuración salen en gris)
       let html='<div class="week-grid"><div class="week-header corner"></div>';
       const days=[];
-      for (let i=0;i<6;i++) {
+      for (let i=0;i<7;i++) {
         const d=new Date(mon); d.setDate(mon.getDate()+i);
         days.push(d);
         const isToday = d.toDateString()===new Date().toDateString();
-        html+=`<div class="week-header" style="${isToday?'background:var(--color-accent);':''}">${DIAS_SEMANA[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}</div>`;
+        const cerrado = !HORARIOS[d.getDay()];
+        html+=`<div class="week-header${cerrado?' cerrado':''}" style="${isToday?'background:var(--color-accent);':''}">${DIAS_SEMANA[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}</div>`;
       }
       // All possible slots (union of all days)
       const allSlots = new Set();
@@ -265,8 +382,9 @@
           const s=new Date(d); s.setHours(sh,sm,0,0);
           const e=new Date(s.getTime()+SLOT_MIN*60000);
           const tt=turnosInRange(s,e);
+          const bq=bloqueoEn(s,e);
           const dt=`${ymd(d)}T${slot}`;
-          html+=`<div class="week-cell" data-slot="${dt}">${tt.map(t=>turnoHTML(t,true)).join('')}</div>`;
+          html+=`<div class="week-cell${bq?' bloqueado':''}" data-slot="${dt}">${bq?bloqueoTag(bq):''}${tt.map(t=>turnoHTML(t,true,s)).join('')}</div>`;
         }
       }
       html+='</div>';
@@ -289,19 +407,22 @@
         if (i>=35 && d.getMonth()!==m) break;
         const isOther=d.getMonth()!==m;
         const isToday=d.getTime()===hoy.getTime();
-        const isDom=d.getDay()===0;
+        const isDom=!HORARIOS[d.getDay()];            // día cerrado según Configuración
         const cls=['month-cell'];
         if(isOther) cls.push('other-month');
         if(isToday) cls.push('today');
         if(isDom) cls.push('domingo');
         const dayStart=new Date(d); dayStart.setHours(0,0,0,0);
-        const dayEnd=new Date(d); dayEnd.setHours(23,59,59,999);
+        const dayEnd=new Date(dayStart); dayEnd.setDate(dayEnd.getDate()+1);
         const tt=turnosInRange(dayStart,dayEnd);
+        const bq=bloqueoEn(dayStart,dayEnd);
+        if(bq) cls.push('bloqueado');
         const maxShow=3;
         html+=`<div class="${cls.join(' ')}" data-date="${ymd(d)}">`;
-        html+=`<div class="day-num">${d.getDate()}</div>`;
+        html+=`<div class="day-num">${d.getDate()}${isDom?' <span style="font-weight:400;font-size:0.65rem;color:var(--color-text-muted);">cerrado</span>':''}</div>`;
+        if (bq) html+=`<div class="month-more">🚫 ${htmlSeguro(bq.motivo || 'Bloqueo')}</div>`;
         if (!isDom) {
-          tt.slice(0,maxShow).forEach(t=>html+=turnoHTML(t,true));
+          tt.slice(0,maxShow).forEach(t=>html+=turnoHTML(t,true,dayStart));
           if(tt.length>maxShow) html+=`<div class="month-more">+${tt.length-maxShow} más</div>`;
         }
         html+='</div>';
@@ -328,9 +449,15 @@
     function bindSlotClicks(container) {
       container.querySelectorAll('.hora-slot,.week-cell').forEach(el=>{
         el.addEventListener('click',(e)=>{
-          if(e.target.closest('.slot-turno,.month-turno')) return;
-          if(el.dataset.slot) openForm(null,el.dataset.slot);
+          if(e.target.closest('.slot-turno,.month-turno,.bloqueo-tag')) return;
+          if(!el.dataset.slot) return;
+          if(el.classList.contains('bloqueado') && !confirm('Este horario está bloqueado. ¿Agendar un turno igual?')) return;
+          openForm(null,el.dataset.slot);
         });
+      });
+      // Tocar la etiqueta "Bloqueado" ofrece quitar el bloqueo
+      container.querySelectorAll('.bloqueo-tag').forEach(el=>{
+        el.addEventListener('click',(e)=>{ e.stopPropagation(); quitarBloqueo(el.dataset.bloqueo); });
       });
       container.querySelectorAll('.slot-turno,.month-turno').forEach(el=>{
         el.addEventListener('click',()=>{
@@ -360,11 +487,18 @@
         start=new Date(y,m,1); start.setDate(start.getDate()-7);
         end=new Date(y,m+1,7);
       }
-      const {data}=await supabaseClient.from('turnos')
-        .select('*,pacientes(nombre,apellido),servicios(nombre),personal(nombre,apellido)')
-        .gte('fecha_hora',start.toISOString()).lte('fecha_hora',end.toISOString())
-        .order('fecha_hora',{ascending:true});
+      // Se piden también los turnos que empezaron hasta 12 h antes (pueden seguir ocupando horas)
+      const desdeTurnos=new Date(start.getTime()-12*3600000);
+      const [{data}, bq]=await Promise.all([
+        supabaseClient.from('turnos')
+          .select('*,pacientes(nombre,apellido),servicios(nombre),personal(nombre,apellido)')
+          .gte('fecha_hora',desdeTurnos.toISOString()).lte('fecha_hora',end.toISOString())
+          .order('fecha_hora',{ascending:true}),
+        supabaseClient.from('bloqueos_agenda').select('*')
+          .lt('desde',end.toISOString()).gt('hasta',start.toISOString()),
+      ]);
       turnosCache=data||[];
+      bloqueosCache=bq.error ? [] : (bq.data||[]);   // sin v12 aún: simplemente no hay bloqueos
       render();
     }
 
@@ -389,7 +523,7 @@
         document.getElementById('servicio_id').value=turno.servicio_id??'';
         document.getElementById('personal_id').value=turno.personal_id??'';
         document.getElementById('fecha_hora').value=isoToLocalInput(turno.fecha_hora);
-        document.getElementById('duracion_min').value=turno.duracion_min??60;
+        setDuracion(turno.duracion_min??60);
         document.getElementById('estado').value=turno.estado??'pendiente';
         document.getElementById('notas').value=turno.notas??'';
         document.getElementById('form-title').textContent='Editar turno';
@@ -398,7 +532,7 @@
       } else {
         ['turno-id','paciente_id','servicio_id','personal_id','notas'].forEach(f=>{const el=document.getElementById(f);if(el)el.value='';});
         document.getElementById('fecha_hora').value=slotDateTime||'';
-        document.getElementById('duracion_min').value=60;
+        setDuracion(60);
         document.getElementById('estado').value='pendiente';
         document.getElementById('form-title').textContent='Nuevo turno';
         document.getElementById('submit-btn').textContent='Guardar turno';
@@ -414,6 +548,183 @@
     }
 
     function closeForm(){document.getElementById('form-card').style.display='none';}
+
+    // ─── Duración en horas ───
+    function setDuracion(mins) {
+      const sel=document.getElementById('duracion_min');
+      const v=String(Number(mins)||60);
+      if(![...sel.options].some(o=>o.value===v)) sel.add(new Option(`${v} min`,v));   // valores antiguos (ej. 45)
+      sel.value=v;
+    }
+    let serviciosCache=[];       // id, nombre, duracion_min
+    document.getElementById('servicio_id').addEventListener('change',()=>{
+      // Turno nuevo: propone las horas según el servicio (la clínica puede cambiarlas al confirmar)
+      if(document.getElementById('turno-id').value) return;
+      const sv=serviciosCache.find(s=>s.id===document.getElementById('servicio_id').value);
+      if(sv && sv.duracion_min) setDuracion(Math.max(60,Math.ceil(sv.duracion_min/60)*60));
+    });
+
+    // ─── Bloqueos de agenda (hora / día / semana) ───
+    function fmtBloqueo(b){
+      const d=new Date(b.desde), h=new Date(b.hasta);
+      const dia=d.toLocaleDateString('es-CL',{weekday:'short',day:'numeric',month:'numeric'});
+      const ms=h-d, DIA=24*3600000;
+      const medianoche=d.getHours()===0&&d.getMinutes()===0;
+      if(medianoche && ms>=7*DIA-3600000 && ms<=7*DIA+3600000){
+        const ult=new Date(h.getTime()-1000);
+        return `Semana ${d.getDate()}/${d.getMonth()+1} al ${ult.getDate()}/${ult.getMonth()+1}`;
+      }
+      if(medianoche && Math.abs(ms-DIA)<=3600000) return `${dia} · todo el día`;
+      return `${dia} · ${hhmm(d)} a ${hhmm(h)}`;
+    }
+
+    async function cargarListaBloqueos(){
+      const cont=document.getElementById('bq-lista');
+      const {data,error}=await supabaseClient.from('bloqueos_agenda').select('*')
+        .gte('hasta',new Date().toISOString()).order('desde',{ascending:true}).limit(40);
+      if(error){ cont.innerHTML='<span style="color:var(--color-text-muted);font-size:0.85rem;">Los bloqueos no están disponibles todavía (falta la actualización v12 de la base).</span>'; return; }
+      cont.innerHTML=(data&&data.length)
+        ? data.map(b=>`<div class="bloqueo-item"><span>${htmlSeguro(fmtBloqueo(b))}${b.motivo?' · <em>'+htmlSeguro(b.motivo)+'</em>':''}</span>
+            <button type="button" class="btn-secondary btn-sm" data-quitar="${b.id}">Quitar</button></div>`).join('')
+        : '<span style="color:var(--color-text-muted);font-size:0.85rem;">No hay bloqueos vigentes.</span>';
+      cont.querySelectorAll('[data-quitar]').forEach(b=>b.addEventListener('click',()=>quitarBloqueo(b.dataset.quitar)));
+    }
+
+    async function quitarBloqueo(id){
+      if(!id||!confirm('¿Quitar este bloqueo? El horario volverá a estar disponible.')) return;
+      const {error}=await supabaseClient.from('bloqueos_agenda').delete().eq('id',id);
+      if(error){ alert('No se pudo quitar el bloqueo: '+error.message); return; }
+      await loadTurnos();
+      if(document.getElementById('bloqueo-card').style.display!=='none') await cargarListaBloqueos();
+    }
+
+    function actualizarFormBloqueo(){
+      const tipo=document.getElementById('bq-tipo').value;
+      document.getElementById('bq-desde-wrap').style.display=tipo==='hora'?'':'none';
+      document.getElementById('bq-hasta-wrap').style.display=tipo==='hora'?'':'none';
+      document.getElementById('bq-fecha-lbl').textContent=tipo==='semana'?'Un día de esa semana (se bloquea lunes a domingo)':'Fecha';
+    }
+    document.getElementById('bq-tipo').addEventListener('change',actualizarFormBloqueo);
+
+    document.getElementById('btn-bloquear').addEventListener('click',async()=>{
+      const card=document.getElementById('bloqueo-card');
+      card.style.display='block';
+      document.getElementById('bq-fecha').value=ymd(currentDate);
+      document.getElementById('bq-error').textContent='';
+      actualizarFormBloqueo();
+      card.scrollIntoView({behavior:'smooth',block:'start'});
+      await cargarListaBloqueos();
+    });
+    document.getElementById('bq-cerrar').addEventListener('click',()=>{ document.getElementById('bloqueo-card').style.display='none'; });
+
+    document.getElementById('bloqueo-form').addEventListener('submit',async(e)=>{
+      e.preventDefault();
+      const err=document.getElementById('bq-error'); err.textContent='';
+      const tipo=document.getElementById('bq-tipo').value;
+      const fecha=document.getElementById('bq-fecha').value;
+      if(!fecha){ err.textContent='Elige una fecha.'; return; }
+      let desde,hasta;
+      if(tipo==='hora'){
+        const a=document.getElementById('bq-desde').value, b=document.getElementById('bq-hasta').value;
+        if(!a||!b||a>=b){ err.textContent='La hora "Hasta" debe ser posterior a "Desde".'; return; }
+        desde=new Date(`${fecha}T${a}:00`); hasta=new Date(`${fecha}T${b}:00`);
+      } else if(tipo==='dia'){
+        desde=new Date(`${fecha}T00:00:00`); hasta=new Date(desde); hasta.setDate(hasta.getDate()+1);
+      } else {
+        desde=getMonday(new Date(`${fecha}T00:00:00`)); hasta=new Date(desde); hasta.setDate(hasta.getDate()+7);
+      }
+      const btn=document.getElementById('bq-guardar'); btn.disabled=true;
+      try{
+        const {error}=await supabaseClient.from('bloqueos_agenda').insert({
+          desde:desde.toISOString(), hasta:hasta.toISOString(),
+          motivo:document.getElementById('bq-motivo').value.trim()||null,
+        });
+        if(error){ err.textContent=/bloqueos_agenda/i.test(error.message)?'Falta aplicar la actualización v12 en la base de datos.':error.message; return; }
+        document.getElementById('bq-motivo').value='';
+        await loadTurnos(); await cargarListaBloqueos();
+      } finally { btn.disabled=false; }
+    });
+
+    // ─── Avisos antes de guardar un turno (día cerrado, fuera de horario, choques, bloqueos) ───
+    async function avisosDeTurno(inicioISO, mins, idTurno){
+      const ini=new Date(inicioISO), fin=new Date(ini.getTime()+mins*60000), avisos=[];
+      const h=HORARIOS[ini.getDay()];
+      if(!h) avisos.push(`La clínica está cerrada los ${DIAS_NOMBRE[ini.getDay()].toLowerCase()} según Configuración.`);
+      else { const hm=hhmm(ini); if(hm<h.desde||hm>=h.hasta) avisos.push(`Esa hora está fuera del horario de atención (${h.desde} a ${h.hasta}).`); }
+      const [ts,bs]=await Promise.all([
+        supabaseClient.from('turnos').select('id,fecha_hora,duracion_min,estado,pacientes(nombre,apellido)')
+          .gte('fecha_hora',new Date(ini.getTime()-12*3600000).toISOString()).lt('fecha_hora',fin.toISOString()),
+        supabaseClient.from('bloqueos_agenda').select('desde,hasta,motivo')
+          .lt('desde',fin.toISOString()).gt('hasta',ini.toISOString()),
+      ]);
+      (ts.data||[]).filter(t=>t.id!==idTurno&&t.estado!=='cancelado'&&turnoFin(t)>ini).forEach(t=>{
+        const n=t.pacientes?`${t.pacientes.nombre} ${t.pacientes.apellido||''}`.trim():'otro paciente';
+        avisos.push(`Se cruza con el turno de ${n} (${hhmm(new Date(t.fecha_hora))} a ${hhmm(turnoFin(t))}).`);
+      });
+      (bs.data||[]).forEach(b=>avisos.push(`Ese horario está bloqueado${b.motivo?': '+b.motivo:''}.`));
+      return avisos;
+    }
+
+    // ─── Mensaje al paciente cuando la clínica confirma (sin pedir cédula ni RUT) ───
+    function mensajeConfirmacion({nombre,servicio,inicio,mins,clinica,direccion}){
+      const fin=new Date(inicio.getTime()+mins*60000);
+      let dia=inicio.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'});
+      dia=dia.charAt(0).toUpperCase()+dia.slice(1);
+      const horas=mins/60;
+      const dur=mins%60===0?`${horas} ${horas===1?'hora reservada':'horas reservadas'} para ti`:`${mins} minutos reservados para ti`;
+      return [
+        `Hola ${nombre} 👋`,
+        `Te confirmamos tu hora en ${clinica}:`,
+        ``,
+        `📅 ${dia}`,
+        `🕐 ${hhmm(inicio)} a ${hhmm(fin)} (${dur})`,
+        servicio?`✨ ${servicio}`:null,
+        direccion?`📍 ${direccion}`:null,
+        ``,
+        `Si necesitas cambiar o cancelar tu hora, respóndenos por este mismo medio. ¡Te esperamos!`,
+      ].filter(x=>x!==null).join('\n');
+    }
+
+    function numeroWhatsApp(tel){
+      const crudo=String(tel||'').trim(); const d=crudo.replace(/\D/g,'');
+      if(!d) return '';
+      if(crudo.startsWith('+')) return d;
+      const nac=telefonoNacional(crudo);
+      return nac.length===9?'56'+nac:d;
+    }
+
+    async function mostrarMensajeConfirmacion(turnoId, pacienteId, servicioId, iso, mins){
+      const pac=pacientesCache.find(p=>p.id===pacienteId)||{};
+      const srv=serviciosCache.find(s=>s.id===servicioId)||{};
+      const cfg=await getConfig();
+      const clinica=cfg.razon_social||'la clínica';
+      const nombre=String(pac.nombre||'').trim().split(/\s+/)[0]||'';
+      document.getElementById('msg-texto').value=mensajeConfirmacion({
+        nombre:nombre||'', servicio:srv.nombre||'', inicio:new Date(iso), mins, clinica, direccion:cfg.direccion||'',
+      }).replace('Hola  👋','Hola 👋');
+      const wa=numeroWhatsApp(pac.telefono);
+      document.getElementById('msg-wa').style.display=wa?'':'none';
+      document.getElementById('msg-wa').dataset.num=wa;
+      document.getElementById('msg-sub').textContent=pac.nombre
+        ? `Avísale a ${pac.nombre}${pac.apellido?' '+pac.apellido:''} que su hora quedó confirmada.`
+        : 'Avísale al paciente que su hora quedó confirmada.';
+      document.getElementById('msg-aviso').textContent=wa
+        ? 'Se abrirá WhatsApp con el mensaje listo; solo falta que presiones enviar.'
+        : 'Este paciente no tiene teléfono registrado: copia el mensaje y envíalo por otro medio.';
+      document.getElementById('msg-modal').hidden=false;
+    }
+    document.getElementById('msg-wa').addEventListener('click',()=>{
+      const num=document.getElementById('msg-wa').dataset.num;
+      const txt=document.getElementById('msg-texto').value;
+      if(num) window.open(`https://wa.me/${num}?text=${encodeURIComponent(txt)}`,'_blank');
+    });
+    document.getElementById('msg-copiar').addEventListener('click',async()=>{
+      const t=document.getElementById('msg-texto');
+      try{ await navigator.clipboard.writeText(t.value); document.getElementById('msg-aviso').textContent='✓ Mensaje copiado.'; }
+      catch(e){ t.select(); document.getElementById('msg-aviso').textContent='Selecciona y copia el texto manualmente.'; }
+    });
+    document.getElementById('msg-cerrar').addEventListener('click',()=>{ document.getElementById('msg-modal').hidden=true; });
+    document.getElementById('msg-modal').addEventListener('click',(e)=>{ if(e.target.id==='msg-modal') e.target.hidden=true; });
 
     // ─── Reconocer al paciente por RUT ───
     const MSG_RUT = 'Escríbelo con o sin puntos: se completan solos el formato y la búsqueda.';
@@ -563,15 +874,29 @@
           servicio_id:document.getElementById('servicio_id').value||null,
           personal_id:document.getElementById('personal_id').value||null,
           fecha_hora:localInputToISO(document.getElementById('fecha_hora').value),
-          duracion_min:document.getElementById('duracion_min').value||60,
+          duracion_min:Number(document.getElementById('duracion_min').value)||60,
           estado:document.getElementById('estado').value,
           notas:document.getElementById('notas').value||null,
         };
+        if(!payload.fecha_hora){errEl.textContent='Indica la fecha y la hora.';return;}
+
+        // 3) avisos: día cerrado, fuera de horario, cruce con otro turno o con un bloqueo
+        const previo=id?(turnosCache.find(t=>t.id===id)||{}).estado:null;
+        if(payload.estado!=='cancelado'){
+          const avisos=await avisosDeTurno(payload.fecha_hora,payload.duracion_min,id||null);
+          if(avisos.length && !confirm('Atención:\n\n• '+avisos.join('\n• ')+'\n\n¿Guardar el turno igual?')) return;
+        }
+
         const {error}=id
           ? await supabaseClient.from('turnos').update(payload).eq('id',id)
           : await supabaseClient.from('turnos').insert(payload);
         if(error){errEl.textContent=error.message;return;}
         closeForm(); await loadTurnos();
+
+        // 4) al confirmar: mensaje listo para el paciente (indica las horas reservadas)
+        if(payload.estado==='confirmado' && previo!=='confirmado'){
+          await mostrarMensajeConfirmacion(id,pacienteId,payload.servicio_id,payload.fecha_hora,payload.duracion_min);
+        }
       } finally {
         btn.disabled=false;
       }
@@ -593,17 +918,29 @@
 
       const [{data:pacientes},{data:servicios},{data:personal}]=await Promise.all([
         supabaseClient.from('pacientes').select('id,nombre,apellido,dni,telefono,email').eq('activo',true).order('apellido'),
-        supabaseClient.from('servicios').select('id,nombre').eq('activo',true).order('nombre'),
+        supabaseClient.from('servicios').select('id,nombre,duracion_min').eq('activo',true).order('nombre'),
         supabaseClient.from('personal').select('id,nombre,apellido').eq('activo',true).order('apellido'),
       ]);
       pacientesCache=pacientes||[];
       const selPac=document.getElementById('paciente_id');
       pacientesCache.forEach(p=>selPac.add(new Option(`${p.apellido}, ${p.nombre}`,p.id)));
       const selSrv=document.getElementById('servicio_id');
-      (servicios||[]).forEach(sv=>selSrv.add(new Option(sv.nombre,sv.id)));
+      serviciosCache=servicios||[];
+      serviciosCache.forEach(sv=>selSrv.add(new Option(sv.nombre,sv.id)));
       const selPer=document.getElementById('personal_id');
       (personal||[]).forEach(p=>selPer.add(new Option(`${p.nombre} ${p.apellido}`,p.id)));
       await loadTurnos();
+
+      // Se mantiene al día sola: horarios de Configuración, reservas nuevas y bloqueos
+      // (cada 45 s con la pestaña a la vista, y al volver a ella)
+      async function refrescarAgenda(){
+        try{
+          horariosDesdeConfig(await getConfig(true));
+          await loadTurnos();
+        }catch(e){ /* sin conexión: se reintenta en el próximo ciclo */ }
+      }
+      setInterval(()=>{ if(document.visibilityState==='visible') refrescarAgenda(); },45000);
+      document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') refrescarAgenda(); });
 
       // Si viene ?paciente=ID (desde una cotización aceptada), abrir el form con ese paciente
       const pacParam = new URLSearchParams(window.location.search).get('paciente');

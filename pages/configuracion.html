@@ -5,6 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Configuración · AIVIMED</title>
   <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .horario-semana { display:grid; gap:0.4rem; max-width:520px; }
+    .horario-dia { display:grid; grid-template-columns:130px 1fr 1fr; gap:0.6rem; align-items:center;
+      padding:0.45rem 0.75rem; border:1px solid var(--color-border); border-radius:var(--radius-sm); background:var(--color-surface); }
+    .horario-dia label { display:flex; align-items:center; gap:0.5rem; margin:0; text-transform:none; letter-spacing:0;
+      font-size:0.9rem; font-weight:600; color:var(--color-text); cursor:pointer; }
+    .horario-dia label input { width:auto; margin:0; accent-color:var(--color-primary); }
+    .horario-dia input[type=time] { padding:0.4rem 0.55rem; }
+    .horario-dia.cerrado { background:var(--color-bg-soft); }
+    .horario-dia.cerrado label { color:var(--color-text-muted); }
+    .horario-dia .cerrado-txt { grid-column:2 / 4; font-size:0.82rem; color:var(--color-text-muted); }
+    @media (max-width:520px) { .horario-dia { grid-template-columns:1fr 1fr; } .horario-dia label { grid-column:1 / 3; } .horario-dia .cerrado-txt { grid-column:1 / 3; } }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -42,13 +55,13 @@
             <div class="form-row">
               <div class="form-group"><label>IVA (%)</label><input type="number" id="iva_pct" min="0" max="100" step="0.1" /></div>
             </div>
-            <h3 style="font-size:0.95rem;color:var(--color-primary-dark);margin-bottom:0.5rem;">Horarios de atención</h3>
-            <div class="form-row">
-              <div class="form-group"><label>Lun a Vie — apertura</label><input type="time" id="hora_apertura" /></div>
-              <div class="form-group"><label>Lun a Vie — cierre</label><input type="time" id="hora_cierre" /></div>
-              <div class="form-group"><label>Sábado — apertura</label><input type="time" id="sab_apertura" /></div>
-              <div class="form-group"><label>Sábado — cierre</label><input type="time" id="sab_cierre" /></div>
-            </div>
+            <h3 style="font-size:0.95rem;color:var(--color-primary-dark);margin-bottom:0.25rem;">Días y horarios de atención</h3>
+            <p style="color:var(--color-text-muted);font-size:0.82rem;margin:0 0 0.75rem;">
+              Marca los días que atiendes y su horario. Un día desmarcado queda <strong>cerrado</strong>: no se puede agendar
+              y no aparece en la reserva online. Al guardar, la agenda y la reserva usan estos horarios de inmediato.
+            </p>
+            <div class="horario-semana" id="horario-semana"></div>
+            <button type="button" class="btn-secondary btn-sm" id="copiar-lunes" style="margin:0.5rem 0 1.25rem;">Copiar el horario del lunes a martes–viernes</button>
             <div class="form-group">
               <label>Política de la empresa (aparece al pie de cada cotización)</label>
               <textarea id="politica_cotizacion" rows="4" placeholder="Validez de la cotización, formas de pago, reprogramación, etc."></textarea>
@@ -89,7 +102,6 @@
   <script src="../assets/js/layout.js"></script>
   <script>
     const EMPRESA_FIELDS = ['razon_social','rut','correo','telefono','direccion','instagram'];
-    const OPER_FIELDS = ['iva_pct','hora_apertura','hora_cierre','sab_apertura','sab_cierre','politica_cotizacion'];
     let serviciosCache = [];
 
     function flash(elId, msg) {
@@ -118,21 +130,93 @@
       flash('empresa-ok', '✓ Guardado');
     });
 
+    // ── Días y horarios (lunes a domingo) ──
+    const ORDEN_DIAS = [1, 2, 3, 4, 5, 6, 0];   // se muestran de lunes a domingo
+
+    function pintarHorario(cfg) {
+      const semana = horarioSemana(cfg);
+      document.getElementById('horario-semana').innerHTML = ORDEN_DIAS.map(i => {
+        const d = semana[i];
+        return `<div class="horario-dia${d.abierto ? '' : ' cerrado'}" id="dia-fila-${i}">
+          <label><input type="checkbox" id="dia-abierto-${i}" ${d.abierto ? 'checked' : ''} /> ${DIAS_NOMBRE[i]}</label>
+          <input type="time" id="dia-desde-${i}" value="${d.desde}" ${d.abierto ? '' : 'hidden'} aria-label="${DIAS_NOMBRE[i]} apertura" />
+          <input type="time" id="dia-hasta-${i}" value="${d.hasta}" ${d.abierto ? '' : 'hidden'} aria-label="${DIAS_NOMBRE[i]} cierre" />
+          <span class="cerrado-txt" id="dia-cerrado-${i}" ${d.abierto ? 'hidden' : ''}>Cerrado</span>
+        </div>`;
+      }).join('');
+      ORDEN_DIAS.forEach(i => {
+        document.getElementById(`dia-abierto-${i}`).addEventListener('change', (e) => {
+          const abierto = e.target.checked;
+          document.getElementById(`dia-fila-${i}`).classList.toggle('cerrado', !abierto);
+          document.getElementById(`dia-desde-${i}`).hidden = !abierto;
+          document.getElementById(`dia-hasta-${i}`).hidden = !abierto;
+          document.getElementById(`dia-cerrado-${i}`).hidden = abierto;
+        });
+      });
+    }
+
+    document.getElementById('copiar-lunes').addEventListener('click', () => {
+      const ab = document.getElementById('dia-abierto-1').checked;
+      const desde = document.getElementById('dia-desde-1').value;
+      const hasta = document.getElementById('dia-hasta-1').value;
+      [2, 3, 4, 5].forEach(i => {
+        const chk = document.getElementById(`dia-abierto-${i}`);
+        chk.checked = ab;
+        chk.dispatchEvent(new Event('change'));
+        document.getElementById(`dia-desde-${i}`).value = desde;
+        document.getElementById(`dia-hasta-${i}`).value = hasta;
+      });
+    });
+
+    // Lee la tabla; devuelve { semana } o { error }
+    function leerHorario() {
+      const semana = {};
+      for (const i of ORDEN_DIAS) {
+        const abierto = document.getElementById(`dia-abierto-${i}`).checked;
+        const desde = document.getElementById(`dia-desde-${i}`).value;
+        const hasta = document.getElementById(`dia-hasta-${i}`).value;
+        if (abierto && (!desde || !hasta || desde >= hasta)) {
+          return { error: `${DIAS_NOMBRE[i]}: la hora de cierre debe ser posterior a la de apertura.` };
+        }
+        semana[i] = { abierto, desde: desde || '09:30', hasta: hasta || '19:30' };
+      }
+      if (!ORDEN_DIAS.some(i => semana[i].abierto)) {
+        return { error: 'Debes dejar al menos un día abierto.' };
+      }
+      return { semana };
+    }
+
     // ── Operacional ──
     document.getElementById('oper-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const h = leerHorario();
+      if (h.error) { alert(h.error); return; }
+      const sem = h.semana;
+
       const payload = {
         iva_pct: document.getElementById('iva_pct').value || 19,
-        hora_apertura: document.getElementById('hora_apertura').value || null,
-        hora_cierre: document.getElementById('hora_cierre').value || null,
-        sab_apertura: document.getElementById('sab_apertura').value || null,
-        sab_cierre: document.getElementById('sab_cierre').value || null,
         politica_cotizacion: document.getElementById('politica_cotizacion').value || null,
+        horario_semana: sem,
       };
-      const err = await guardarConfig(payload);
+      // Columnas antiguas (compatibilidad con pantallas previas): primer día de semana abierto y sábado
+      const lv = [1, 2, 3, 4, 5].find(i => sem[i].abierto);
+      if (lv != null) { payload.hora_apertura = sem[lv].desde; payload.hora_cierre = sem[lv].hasta; }
+      if (sem[6].abierto) { payload.sab_apertura = sem[6].desde; payload.sab_cierre = sem[6].hasta; }
+
+      let err = await guardarConfig(payload);
+      if (err && /horario_semana/i.test(err)) {
+        // La base aún no tiene la actualización v12: se guarda lo demás y se avisa
+        delete payload.horario_semana;
+        err = await guardarConfig(payload);
+        if (!err) {
+          alert('Se guardó la configuración, pero los días y horarios por día NO: falta aplicar la actualización v12 en la base de datos.');
+          _configCache = null;
+          return;
+        }
+      }
       if (err) { alert('Error: ' + err); return; }
       _configCache = null;
-      flash('oper-ok', '✓ Guardado');
+      flash('oper-ok', '✓ Guardado: la agenda y la reserva online ya usan estos horarios');
     });
 
     // ── Plantillas de consentimiento ──
@@ -212,10 +296,7 @@ Fecha: {fecha}`;
       const cfg = await getConfig();
       EMPRESA_FIELDS.forEach(f => { const el = document.getElementById(f); if (el) el.value = cfg[f] ?? ''; });
       document.getElementById('iva_pct').value = cfg.iva_pct ?? 19;
-      document.getElementById('hora_apertura').value = cfg.hora_apertura ?? '';
-      document.getElementById('hora_cierre').value = cfg.hora_cierre ?? '';
-      document.getElementById('sab_apertura').value = cfg.sab_apertura ?? '';
-      document.getElementById('sab_cierre').value = cfg.sab_cierre ?? '';
+      pintarHorario(cfg);
       document.getElementById('politica_cotizacion').value = cfg.politica_cotizacion ?? '';
 
       const { data: servicios } = await supabaseClient.from('servicios')

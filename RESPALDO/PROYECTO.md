@@ -84,6 +84,13 @@ Uso **operacional interno** (dueñas/equipo). Aparte tiene páginas públicas pa
 12. `v9_unificar_rut_telefono.sql` — RUT único POR CLÍNICA (antes global) + unifica formato de RUT/teléfonos ya guardados (respaldo en `respaldo_formatos`).
 13. `v10_notificaciones.sql` — tabla `notificaciones` (RLS por clínica) + triggers: reserva online nueva, cotización aceptada/rechazada, consentimiento firmado a distancia. Alimenta la campanita 🔔 (`iniciarCampanita()` en layout.js).
 14. `v11_reserva_reconoce_paciente.sql` — RPC públicas `reservar_reconocer` (datos censurados + límite por IP) y `crear_reserva_v2` (asocia por RUT); tabla interna `reservar_consultas_rut`.
+15. `v12_horarios_bloqueos.sql` — `config.horario_semana` (jsonb 0..6), tabla `bloqueos_agenda` (RLS por clínica), `horario_clinica()`, `ocupacion_publica()`, `datos_reserva_publica` con horario por día, y `crear_reserva_v2` con validación de día/horario/bloqueos/choques + limpieza de texto.
+
+### Horarios, bloqueos y confirmación (decisión 2026-10)
+- **Horario por día** (lunes a domingo, cada uno abierto/cerrado con su apertura y cierre) en Configuración; la agenda y la reserva pública lo leen de inmediato (la agenda se refresca sola cada 45 s). Un día cerrado no se puede reservar online.
+- **Bloqueos**: por hora/tramo, día o semana; no se reservan online y se marcan en la agenda. Los turnos ocupan tantas horas como su duración (selector en horas).
+- **Confirmar** un turno abre un mensaje listo para el paciente con las horas reservadas, sin pedir cédula; el envío es 1 clic por WhatsApp (no hay envío 100% automático sin WhatsApp Business API).
+- Reserva online: reserva provisoriamente la duración del servicio en horas completas; la clínica define las horas finales al confirmar.
 
 ### Reconocer al paciente por RUT (decisión 2026-10)
 - **Agenda interna:** casilla RUT en "Nuevo turno"; RUT existente → ficha; nuevo → se crea junto con el turno; teléfono repetido sin RUT → se completa el RUT en vez de duplicar.
