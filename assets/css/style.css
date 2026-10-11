@@ -481,3 +481,99 @@ tr:hover td { background: var(--color-bg-soft); }
     backdrop-filter: blur(2px);
   }
 }
+
+/* ══════════════════════════════════════════════
+   RECONOCER PACIENTE POR RUT (agenda)
+   ══════════════════════════════════════════════ */
+.reconocer-paciente {
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-soft);
+  padding: 0.85rem 1rem 0.5rem;
+  margin-bottom: 1rem;
+}
+.reconocer-estado { display: block; margin-top: 0.25rem; font-size: 0.8rem; color: var(--color-text-muted); min-height: 1.1em; }
+.reconocer-estado.ok { color: var(--color-success); }
+.reconocer-estado.aviso { color: #92600a; }
+.ficha-paciente {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.9rem;
+}
+.ficha-paciente .ficha-nombre { font-weight: 700; }
+.ficha-paciente .ficha-datos { color: var(--color-text-muted); margin-top: 0.15rem; display: flex; gap: 0.25rem 1rem; flex-wrap: wrap; }
+.reconocer-paciente [hidden] { display: none !important; }
+
+/* ══════════════════════════════════════════════
+   CAMPANITA DE NOVEDADES (barra superior)
+   ══════════════════════════════════════════════ */
+.campanita {
+  position: relative;
+  flex: 0 0 auto;
+  margin-left: auto;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  color: var(--color-text);
+  padding: 0.45rem 0.65rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  box-shadow: none;
+}
+.campanita:hover { background: var(--color-bg-soft); color: var(--color-text); box-shadow: none; transform: none; }
+.campanita[hidden] { display: none; }
+.campanita-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--color-danger);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.campanita-badge[hidden] { display: none; }
+.campanita-panel {
+  position: fixed;
+  top: 4.6rem;
+  right: 1rem;
+  width: min(390px, calc(100vw - 2rem));
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 300;
+}
+.campanita-panel[hidden] { display: none; }
+.campanita-cab, .campanita-pie {
+  display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+  padding: 0.65rem 0.9rem; font-size: 0.85rem;
+}
+.campanita-cab { border-bottom: 1px solid var(--color-border); }
+.campanita-pie { border-top: 1px solid var(--color-border); color: var(--color-text-muted); font-size: 0.78rem; flex-wrap: wrap; }
+.campanita-lista { overflow-y: auto; flex: 1; }
+.campanita-item { padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--color-border); cursor: pointer; border-left: 3px solid transparent; }
+.campanita-item:hover { background: var(--color-bg-soft); }
+.campanita-item.sin-leer { background: var(--color-primary-light); border-left-color: var(--color-primary); }
+.campanita-titulo { font-weight: 600; font-size: 0.88rem; }
+.campanita-detalle { font-size: 0.82rem; color: var(--color-text-muted); margin-top: 0.1rem; }
+.campanita-hora { font-size: 0.72rem; color: var(--color-text-muted); margin-top: 0.2rem; }
+.campanita-vacio { padding: 1.2rem 0.9rem; color: var(--color-text-muted); font-size: 0.88rem; margin: 0; }
+.campanita-link {
+  background: none; border: none; padding: 0; border-radius: 0; box-shadow: none;
+  color: var(--color-primary-dark); font-size: inherit; font-weight: 600; cursor: pointer; text-decoration: underline;
+}
+.campanita-link:hover { background: none; color: var(--color-primary); box-shadow: none; transform: none; }
+.campanita-link:disabled { color: var(--color-text-muted); text-decoration: none; cursor: default; }

@@ -81,8 +81,29 @@
           <h2 id="form-title" style="margin-top:0;">Nuevo turno</h2>
           <form id="turno-form">
             <input type="hidden" id="turno-id" />
+
+            <!-- Reconocer al paciente por RUT (o crearlo al guardar el turno) -->
+            <div class="reconocer-paciente" id="reconocer-paciente">
+              <div class="form-group">
+                <label for="rut-buscar">RUT del paciente</label>
+                <input type="text" id="rut-buscar" placeholder="12.345.678-9" maxlength="12" autocomplete="off" />
+                <small class="reconocer-estado" id="rut-estado"></small>
+              </div>
+              <div id="paciente-ficha" hidden></div>
+              <div id="paciente-nuevo" hidden>
+                <div class="form-row">
+                  <div class="form-group"><label for="nuevo-nombre">Nombre *</label><input id="nuevo-nombre" autocomplete="off" /></div>
+                  <div class="form-group"><label for="nuevo-apellido">Apellido *</label><input id="nuevo-apellido" autocomplete="off" /></div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group"><label for="nuevo-telefono">Teléfono *</label><input type="tel" id="nuevo-telefono" placeholder="+56 9 1234 5678" autocomplete="off" /></div>
+                  <div class="form-group"><label for="nuevo-email">Email</label><input type="email" id="nuevo-email" autocomplete="off" /></div>
+                </div>
+              </div>
+            </div>
+
             <div class="form-row">
-              <div class="form-group"><label>Paciente *</label><select id="paciente_id" required><option value="">Seleccionar…</option></select></div>
+              <div class="form-group"><label>Paciente (o búscalo por RUT arriba)</label><select id="paciente_id"><option value="">Seleccionar…</option></select></div>
               <div class="form-group"><label>Servicio</label><select id="servicio_id"><option value="">Seleccionar…</option></select></div>
               <div class="form-group"><label>Profesional</label><select id="personal_id"><option value="">Sin asignar</option></select></div>
             </div>
@@ -150,6 +171,7 @@
     let currentDate = new Date(); currentDate.setHours(0,0,0,0);
     let currentView = 'dia';
     let turnosCache = [];
+    let pacientesCache = [];     // pacientes activos: id, nombre, apellido, dni, telefono, email
 
     // ── Helpers de fecha en hora LOCAL (evita el desfase de zona horaria) ──
     // Fecha local YYYY-MM-DD (no usar toISOString, que pasa a UTC)
@@ -383,10 +405,127 @@
         document.getElementById('delete-btn').style.display='none';
       }
       document.getElementById('form-error').textContent='';
+      // Reconocimiento por RUT: ficha del paciente elegido, o casilla de RUT limpia
+      ocultarNuevo();
+      const pacActual=document.getElementById('paciente_id').value;
+      if(pacActual) seleccionarPaciente(pacActual);
+      else { document.getElementById('rut-buscar').value=''; renderFicha(); setEstadoRut(MSG_RUT); }
       window.scrollTo({top:0,behavior:'smooth'});
     }
 
     function closeForm(){document.getElementById('form-card').style.display='none';}
+
+    // ─── Reconocer al paciente por RUT ───
+    const MSG_RUT = 'Escríbelo con o sin puntos: se completan solos el formato y la búsqueda.';
+    let modoPaciente = null;     // 'nuevo' = se creará un paciente al guardar el turno
+    let rutTimer = null;
+
+    function setEstadoRut(texto, clase) {
+      const el = document.getElementById('rut-estado');
+      el.className = 'reconocer-estado' + (clase ? ' ' + clase : '');
+      el.textContent = texto;
+    }
+
+    function renderFicha() {
+      const cont = document.getElementById('paciente-ficha');
+      const p = pacientesCache.find(x => x.id === document.getElementById('paciente_id').value);
+      if (!p) { cont.hidden = true; cont.innerHTML = ''; return; }
+      cont.innerHTML = `<div class="ficha-paciente">
+          <div class="ficha-nombre">✅ ${htmlSeguro(p.nombre)} ${htmlSeguro(p.apellido || '')}</div>
+          <div class="ficha-datos">
+            <span>RUT: ${p.dni ? htmlSeguro(formatearRut(p.dni)) : 'no registrado'}</span>
+            ${p.telefono ? `<span>📞 ${htmlSeguro(p.telefono)}</span>` : ''}
+            ${p.email ? `<span>✉️ ${htmlSeguro(p.email)}</span>` : ''}
+          </div></div>`;
+      cont.hidden = false;
+    }
+
+    function ocultarNuevo() {
+      modoPaciente = null;
+      document.getElementById('paciente-nuevo').hidden = true;
+      ['nuevo-nombre', 'nuevo-apellido', 'nuevo-telefono', 'nuevo-email'].forEach(id => { document.getElementById(id).value = ''; });
+    }
+
+    function seleccionarPaciente(id) {
+      document.getElementById('paciente_id').value = id || '';
+      ocultarNuevo();
+      const p = pacientesCache.find(x => x.id === id);
+      if (!p) {                                   // sin selección (o paciente fuera de la lista activa)
+        document.getElementById('rut-buscar').value = '';
+        setEstadoRut(id ? '' : MSG_RUT);
+        renderFicha();
+        return;
+      }
+      document.getElementById('rut-buscar').value = p.dni ? formatearRut(p.dni) : '';
+      setEstadoRut(p.dni ? '✅ Paciente reconocido.' : 'Paciente sin RUT registrado.', p.dni ? 'ok' : 'aviso');
+      renderFicha();
+    }
+
+    function buscarPorRut() {
+      const sel = document.getElementById('paciente_id');
+      const limpio = rutLimpio(document.getElementById('rut-buscar').value);
+      const actual = pacientesCache.find(p => p.id === sel.value);
+      if (actual && actual.dni && rutLimpio(actual.dni) === limpio) return;   // sin cambios
+      if (sel.value || modoPaciente) { sel.value = ''; ocultarNuevo(); renderFicha(); }   // cambió el RUT: se suelta el anterior
+      if (!limpio) { setEstadoRut(MSG_RUT); return; }
+      if (limpio.length < 7) { setEstadoRut('Sigue escribiendo el RUT…'); return; }
+      const hallado = pacientesCache.find(p => p.dni && rutLimpio(p.dni) === limpio);
+      if (hallado) { seleccionarPaciente(hallado.id); return; }
+      if (!rutValido(limpio)) {
+        const largo = limpio.length >= 8;
+        setEstadoRut(largo ? '⚠ El RUT no es válido: revisa el dígito verificador.' : 'Sigue escribiendo el RUT…', largo ? 'aviso' : '');
+        return;
+      }
+      modoPaciente = 'nuevo';
+      document.getElementById('paciente-nuevo').hidden = false;
+      document.getElementById('nuevo-nombre').focus();
+      setEstadoRut('ℹ️ Este RUT no está registrado: completa sus datos y se crea junto con el turno.', 'aviso');
+    }
+
+    // Se llama al INICIO del guardado del turno, antes de armar el payload. Devuelve { error } o {}.
+    async function prepararPaciente() {
+      const sel = document.getElementById('paciente_id');
+      if (modoPaciente !== 'nuevo' || sel.value) return {};
+      const nombre = document.getElementById('nuevo-nombre').value.trim();
+      const apellido = document.getElementById('nuevo-apellido').value.trim();
+      const dni = formatearRut(document.getElementById('rut-buscar').value);
+      const telefono = formatearTelefonoCL(document.getElementById('nuevo-telefono').value);
+      const email = document.getElementById('nuevo-email').value.trim() || null;
+      if (!nombre || !apellido) return { error: 'Ingresa nombre y apellido del paciente nuevo.' };
+      if (!rutValido(dni)) return { error: 'El RUT no es válido: revisa el dígito verificador.' };
+      if (!telefonoValidoCL(telefono)) return { error: 'Ingresa un teléfono válido (ej. +56 9 1234 5678).' };
+
+      // ¿Ya existe con ese teléfono pero sin RUT? Se completa en vez de duplicar.
+      const tel = telefonoNacional(telefono);
+      const mismo = pacientesCache.find(p => !p.dni && p.telefono && telefonoNacional(p.telefono) === tel);
+      let paciente;
+      if (mismo && confirm(`Ya existe «${mismo.nombre} ${mismo.apellido || ''}» con ese teléfono y sin RUT.\n\n¿Es la misma persona?\n\nAceptar: usar ese paciente y guardarle este RUT.\nCancelar: crear uno nuevo.`)) {
+        const { error } = await supabaseClient.from('pacientes').update({ dni }).eq('id', mismo.id);
+        if (error) return { error: 'No se pudo guardar el RUT: ' + error.message };
+        mismo.dni = dni;
+        paciente = mismo;
+      } else {
+        const { data, error } = await supabaseClient.from('pacientes')
+          .insert({ nombre, apellido, dni, telefono, email })     // organizacion_id lo pone current_org() por defecto
+          .select('id, nombre, apellido, dni, telefono, email').single();
+        if (error) {
+          return { error: /duplicate|unique|23505/i.test(error.message || '')
+            ? `Ya existe un paciente con el RUT ${dni} (¿dado de baja?).`
+            : 'No se pudo crear el paciente: ' + error.message };
+        }
+        pacientesCache.push(data);
+        paciente = data;
+      }
+      // dejarlo elegido en el selector (agregando la opción si no existía)
+      if (![...sel.options].some(o => o.value === paciente.id)) {
+        sel.add(new Option(`${paciente.apellido}, ${paciente.nombre}`, paciente.id));
+      }
+      seleccionarPaciente(paciente.id);
+      return {};
+    }
+
+    document.getElementById('rut-buscar').addEventListener('input', () => { clearTimeout(rutTimer); rutTimer = setTimeout(buscarPorRut, 400); });
+    document.getElementById('paciente_id').addEventListener('change', () => seleccionarPaciente(document.getElementById('paciente_id').value));
 
     // Events
     document.getElementById('prev-btn').addEventListener('click',()=>navigate(-1));
@@ -406,21 +545,36 @@
 
     document.getElementById('turno-form').addEventListener('submit',async(e)=>{
       e.preventDefault();
-      const id=document.getElementById('turno-id').value;
-      const payload={
-        paciente_id:document.getElementById('paciente_id').value||null,
-        servicio_id:document.getElementById('servicio_id').value||null,
-        personal_id:document.getElementById('personal_id').value||null,
-        fecha_hora:localInputToISO(document.getElementById('fecha_hora').value),
-        duracion_min:document.getElementById('duracion_min').value||60,
-        estado:document.getElementById('estado').value,
-        notas:document.getElementById('notas').value||null,
-      };
-      const {error}=id
-        ? await supabaseClient.from('turnos').update(payload).eq('id',id)
-        : await supabaseClient.from('turnos').insert(payload);
-      if(error){document.getElementById('form-error').textContent=error.message;return;}
-      closeForm(); await loadTurnos();
+      const errEl=document.getElementById('form-error');
+      errEl.textContent='';
+      const btn=document.getElementById('submit-btn');
+      btn.disabled=true;                       // mientras se crea el paciente y se guarda el turno
+      try {
+        // 1) si el RUT es nuevo, se crea primero el paciente
+        const prep=await prepararPaciente();
+        if(prep.error){errEl.textContent=prep.error;return;}
+        const pacienteId=document.getElementById('paciente_id').value;
+        if(!pacienteId){errEl.textContent='Indica el RUT del paciente o elígelo de la lista.';return;}
+
+        // 2) luego el turno con ese paciente_id
+        const id=document.getElementById('turno-id').value;
+        const payload={
+          paciente_id:pacienteId,
+          servicio_id:document.getElementById('servicio_id').value||null,
+          personal_id:document.getElementById('personal_id').value||null,
+          fecha_hora:localInputToISO(document.getElementById('fecha_hora').value),
+          duracion_min:document.getElementById('duracion_min').value||60,
+          estado:document.getElementById('estado').value,
+          notas:document.getElementById('notas').value||null,
+        };
+        const {error}=id
+          ? await supabaseClient.from('turnos').update(payload).eq('id',id)
+          : await supabaseClient.from('turnos').insert(payload);
+        if(error){errEl.textContent=error.message;return;}
+        closeForm(); await loadTurnos();
+      } finally {
+        btn.disabled=false;
+      }
     });
 
     (async()=>{
@@ -438,12 +592,13 @@
       document.getElementById('abrir-url').addEventListener('click', () => window.open(reservaUrl,'_blank'));
 
       const [{data:pacientes},{data:servicios},{data:personal}]=await Promise.all([
-        supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo',true).order('apellido'),
+        supabaseClient.from('pacientes').select('id,nombre,apellido,dni,telefono,email').eq('activo',true).order('apellido'),
         supabaseClient.from('servicios').select('id,nombre').eq('activo',true).order('nombre'),
         supabaseClient.from('personal').select('id,nombre,apellido').eq('activo',true).order('apellido'),
       ]);
+      pacientesCache=pacientes||[];
       const selPac=document.getElementById('paciente_id');
-      (pacientes||[]).forEach(p=>selPac.add(new Option(`${p.apellido}, ${p.nombre}`,p.id)));
+      pacientesCache.forEach(p=>selPac.add(new Option(`${p.apellido}, ${p.nombre}`,p.id)));
       const selSrv=document.getElementById('servicio_id');
       (servicios||[]).forEach(sv=>selSrv.add(new Option(sv.nombre,sv.id)));
       const selPer=document.getElementById('personal_id');
@@ -458,6 +613,8 @@
         sel.value = pacParam;
         if (sel.value !== pacParam) { // por si el paciente está inactivo / no está en la lista
           alert('No se encontró el paciente en la lista activa. Selecciónalo manualmente.');
+        } else {
+          seleccionarPaciente(pacParam);   // muestra su ficha
         }
       }
     })();
