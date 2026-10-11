@@ -70,14 +70,6 @@
     .bloqueo-item { display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.45rem 0;
       border-bottom:1px solid var(--color-border); font-size:0.85rem; }
     .bloqueo-item:last-child { border-bottom:none; }
-
-    /* Ventana de confirmación con mensaje */
-    .modal-fondo { position:fixed; inset:0; background:rgba(20,50,40,0.45); z-index:400; display:flex; align-items:flex-start;
-      justify-content:center; padding:2rem 1rem; overflow:auto; }
-    .modal-fondo[hidden] { display:none; }
-    .modal-caja { background:var(--color-surface); border-radius:var(--radius); box-shadow:var(--shadow-lg); width:100%; max-width:520px; padding:1.5rem; }
-    .modal-caja textarea { min-height:230px; font-size:0.9rem; line-height:1.5; }
-    .campo-hint { display:block; margin-top:0.25rem; font-size:0.76rem; color:var(--color-text-muted); }
   </style>
 </head>
 <body>
@@ -207,23 +199,6 @@
         </div>
 
       </div>
-    </div>
-  </div>
-
-  <!-- Mensaje al confirmar un turno (no pide cédula ni RUT) -->
-  <div class="modal-fondo" id="msg-modal" hidden>
-    <div class="modal-caja">
-      <h2 style="margin-top:0;">Turno confirmado ✓</h2>
-      <p style="color:var(--color-text-muted);font-size:0.85rem;margin-top:0;" id="msg-sub"></p>
-      <div class="form-group">
-        <label for="msg-texto">Mensaje para el paciente (puedes editarlo)</label>
-        <textarea id="msg-texto"></textarea>
-        <small class="campo-hint">No incluye ni pide cédula o RUT. Indica cuántas horas quedan reservadas para el paciente.</small>
-      </div>
-      <button type="button" id="msg-wa">Enviar por WhatsApp</button>
-      <button type="button" id="msg-copiar" class="btn-secondary">Copiar mensaje</button>
-      <button type="button" id="msg-cerrar" class="btn-secondary">Cerrar</button>
-      <p id="msg-aviso" style="font-size:0.82rem;color:var(--color-text-muted);margin-bottom:0;"></p>
     </div>
   </div>
 
@@ -665,67 +640,6 @@
       return avisos;
     }
 
-    // ─── Mensaje al paciente cuando la clínica confirma (sin pedir cédula ni RUT) ───
-    function mensajeConfirmacion({nombre,servicio,inicio,mins,clinica,direccion}){
-      const fin=new Date(inicio.getTime()+mins*60000);
-      let dia=inicio.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'});
-      dia=dia.charAt(0).toUpperCase()+dia.slice(1);
-      const horas=mins/60;
-      const dur=mins%60===0?`${horas} ${horas===1?'hora reservada':'horas reservadas'} para ti`:`${mins} minutos reservados para ti`;
-      return [
-        `Hola ${nombre} 👋`,
-        `Te confirmamos tu hora en ${clinica}:`,
-        ``,
-        `📅 ${dia}`,
-        `🕐 ${hhmm(inicio)} a ${hhmm(fin)} (${dur})`,
-        servicio?`✨ ${servicio}`:null,
-        direccion?`📍 ${direccion}`:null,
-        ``,
-        `Si necesitas cambiar o cancelar tu hora, respóndenos por este mismo medio. ¡Te esperamos!`,
-      ].filter(x=>x!==null).join('\n');
-    }
-
-    function numeroWhatsApp(tel){
-      const crudo=String(tel||'').trim(); const d=crudo.replace(/\D/g,'');
-      if(!d) return '';
-      if(crudo.startsWith('+')) return d;
-      const nac=telefonoNacional(crudo);
-      return nac.length===9?'56'+nac:d;
-    }
-
-    async function mostrarMensajeConfirmacion(turnoId, pacienteId, servicioId, iso, mins){
-      const pac=pacientesCache.find(p=>p.id===pacienteId)||{};
-      const srv=serviciosCache.find(s=>s.id===servicioId)||{};
-      const cfg=await getConfig();
-      const clinica=cfg.razon_social||'la clínica';
-      const nombre=String(pac.nombre||'').trim().split(/\s+/)[0]||'';
-      document.getElementById('msg-texto').value=mensajeConfirmacion({
-        nombre:nombre||'', servicio:srv.nombre||'', inicio:new Date(iso), mins, clinica, direccion:cfg.direccion||'',
-      }).replace('Hola  👋','Hola 👋');
-      const wa=numeroWhatsApp(pac.telefono);
-      document.getElementById('msg-wa').style.display=wa?'':'none';
-      document.getElementById('msg-wa').dataset.num=wa;
-      document.getElementById('msg-sub').textContent=pac.nombre
-        ? `Avísale a ${pac.nombre}${pac.apellido?' '+pac.apellido:''} que su hora quedó confirmada.`
-        : 'Avísale al paciente que su hora quedó confirmada.';
-      document.getElementById('msg-aviso').textContent=wa
-        ? 'Se abrirá WhatsApp con el mensaje listo; solo falta que presiones enviar.'
-        : 'Este paciente no tiene teléfono registrado: copia el mensaje y envíalo por otro medio.';
-      document.getElementById('msg-modal').hidden=false;
-    }
-    document.getElementById('msg-wa').addEventListener('click',()=>{
-      const num=document.getElementById('msg-wa').dataset.num;
-      const txt=document.getElementById('msg-texto').value;
-      if(num) window.open(`https://wa.me/${num}?text=${encodeURIComponent(txt)}`,'_blank');
-    });
-    document.getElementById('msg-copiar').addEventListener('click',async()=>{
-      const t=document.getElementById('msg-texto');
-      try{ await navigator.clipboard.writeText(t.value); document.getElementById('msg-aviso').textContent='✓ Mensaje copiado.'; }
-      catch(e){ t.select(); document.getElementById('msg-aviso').textContent='Selecciona y copia el texto manualmente.'; }
-    });
-    document.getElementById('msg-cerrar').addEventListener('click',()=>{ document.getElementById('msg-modal').hidden=true; });
-    document.getElementById('msg-modal').addEventListener('click',(e)=>{ if(e.target.id==='msg-modal') e.target.hidden=true; });
-
     // ─── Reconocer al paciente por RUT ───
     const MSG_RUT = 'Escríbelo con o sin puntos: se completan solos el formato y la búsqueda.';
     let modoPaciente = null;     // 'nuevo' = se creará un paciente al guardar el turno
@@ -887,15 +801,19 @@
           if(avisos.length && !confirm('Atención:\n\n• '+avisos.join('\n• ')+'\n\n¿Guardar el turno igual?')) return;
         }
 
-        const {error}=id
-          ? await supabaseClient.from('turnos').update(payload).eq('id',id)
-          : await supabaseClient.from('turnos').insert(payload);
+        let turnoId=id, error=null;
+        if(id){
+          ({error}=await supabaseClient.from('turnos').update(payload).eq('id',id));
+        } else {
+          const r=await supabaseClient.from('turnos').insert(payload).select('id').single();
+          error=r.error; turnoId=r.data&&r.data.id;
+        }
         if(error){errEl.textContent=error.message;return;}
         closeForm(); await loadTurnos();
 
         // 4) al confirmar: mensaje listo para el paciente (indica las horas reservadas)
-        if(payload.estado==='confirmado' && previo!=='confirmado'){
-          await mostrarMensajeConfirmacion(id,pacienteId,payload.servicio_id,payload.fecha_hora,payload.duracion_min);
+        if(payload.estado==='confirmado' && previo!=='confirmado' && turnoId){
+          await abrirConfirmacionTurno(turnoId);
         }
       } finally {
         btn.disabled=false;
@@ -941,6 +859,8 @@
       }
       setInterval(()=>{ if(document.visibilityState==='visible') refrescarAgenda(); },45000);
       document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') refrescarAgenda(); });
+      // Una cita confirmada desde la campanita se refleja al instante en la grilla
+      document.addEventListener('turnos-cambiaron',()=>{ loadTurnos(); });
 
       // Si viene ?paciente=ID (desde una cotización aceptada), abrir el form con ese paciente
       const pacParam = new URLSearchParams(window.location.search).get('paciente');

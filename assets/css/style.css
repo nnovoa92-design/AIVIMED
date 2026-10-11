@@ -577,3 +577,21 @@ tr:hover td { background: var(--color-bg-soft); }
 }
 .campanita-link:hover { background: none; color: var(--color-primary); box-shadow: none; transform: none; }
 .campanita-link:disabled { color: var(--color-text-muted); text-decoration: none; cursor: default; }
+
+/* ══════════════════════════════════════════════
+   VENTANA DE CONFIRMACIÓN DE CITA + BOTÓN EN LA CAMPANITA
+   ══════════════════════════════════════════════ */
+.modal-fondo {
+  position: fixed; inset: 0; background: rgba(20,50,40,0.45); z-index: 400;
+  display: flex; align-items: flex-start; justify-content: center; padding: 2rem 1rem; overflow: auto;
+}
+.modal-fondo[hidden] { display: none; }
+.modal-caja {
+  background: var(--color-surface); border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  width: 100%; max-width: 520px; padding: 1.5rem;
+}
+.modal-caja textarea { min-height: 230px; font-size: 0.9rem; line-height: 1.5; }
+.modal-acciones { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.campo-hint { display: block; margin-top: 0.25rem; font-size: 0.76rem; color: var(--color-text-muted); }
+.campanita-accion { margin-top: 0.5rem; }
+.campanita-ok { margin-top: 0.4rem; font-size: 0.78rem; font-weight: 600; color: var(--color-success); }

@@ -137,6 +137,191 @@ function badgeEstado(estado, mapa) {
   return `<span class="badge ${e.badge}">${e.label}</span>`;
 }
 
+// ---------- Confirmar una cita y avisar al paciente ----------
+// Un solo flujo para la campanita y la agenda. El mensaje NO pide cédula ni RUT e indica cuántas
+// horas quedan reservadas para el paciente. El envío es con un clic (abre WhatsApp con el
+// mensaje escrito); el envío 100 % automático requeriría la API de WhatsApp Business.
+function mensajeConfirmacion({ nombre, servicio, inicio, mins, clinica, direccion }) {
+  const hm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const fin = new Date(inicio.getTime() + mins * 60000);
+  let dia = inicio.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+  dia = dia.charAt(0).toUpperCase() + dia.slice(1);
+  const horas = mins / 60;
+  const dur = mins % 60 === 0
+    ? `${horas} ${horas === 1 ? 'hora reservada' : 'horas reservadas'} para ti`
+    : `${mins} minutos reservados para ti`;
+  return [
+    `Hola${nombre ? ' ' + nombre : ''} 👋`,
+    `Te confirmamos tu hora en ${clinica || 'nuestra clínica'}:`,
+    ``,
+    `📅 ${dia}`,
+    `🕐 ${hm(inicio)} a ${hm(fin)} (${dur})`,
+    servicio ? `✨ ${servicio}` : null,
+    direccion ? `📍 ${direccion}` : null,
+    ``,
+    `Si necesitas cambiar o cancelar tu hora, respóndenos por este mismo medio. ¡Te esperamos!`,
+  ].filter(x => x !== null).join('\n');
+}
+
+// Número listo para wa.me (código de país + dígitos)
+function numeroWhatsApp(tel) {
+  const crudo = String(tel || '').trim();
+  const d = crudo.replace(/\D/g, '');
+  if (!d) return '';
+  if (crudo.startsWith('+')) return d;
+  const nac = telefonoNacional(crudo);
+  return nac.length === 9 ? '56' + nac : d;
+}
+
+// Avisos de cruce con otro turno o con un bloqueo (la clínica puede aceptarlos)
+async function avisosCruceTurno(t, mins) {
+  const ini = new Date(t.fecha_hora);
+  const fin = new Date(ini.getTime() + mins * 60000);
+  const avisos = [];
+  const hm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const [ts, bs] = await Promise.all([
+    supabaseClient.from('turnos').select('id,fecha_hora,duracion_min,estado,pacientes(nombre,apellido)')
+      .gte('fecha_hora', new Date(ini.getTime() - 12 * 3600000).toISOString()).lt('fecha_hora', fin.toISOString()),
+    supabaseClient.from('bloqueos_agenda').select('desde,hasta,motivo')
+      .lt('desde', fin.toISOString()).gt('hasta', ini.toISOString()),
+  ]);
+  (ts.data || []).forEach(x => {
+    if (x.id === t.id || x.estado === 'cancelado') return;
+    const xini = new Date(x.fecha_hora);
+    const xfin = new Date(xini.getTime() + Math.max(Number(x.duracion_min) || 60, 30) * 60000);
+    if (xfin <= ini) return;
+    const n = x.pacientes ? `${x.pacientes.nombre} ${x.pacientes.apellido || ''}`.trim() : 'otro paciente';
+    avisos.push(`Se cruza con el turno de ${n} (${hm(xini)} a ${hm(xfin)}).`);
+  });
+  (bs.data || []).forEach(b => avisos.push(`Ese horario está bloqueado${b.motivo ? ': ' + b.motivo : ''}.`));
+  return avisos;
+}
+
+// Abre la ventana para confirmar un turno y enviarle el mensaje al paciente.
+//  · turno pendiente  → la clínica elige las horas; "Confirmar y enviar" confirma la cita,
+//                       bloquea esas horas y abre WhatsApp con el mensaje.
+//  · turno confirmado → solo muestra el mensaje para enviarlo (ej. recién confirmado en la agenda).
+// opciones.onListo se llama cuando la cita queda confirmada.
+async function abrirConfirmacionTurno(turnoId, opciones) {
+  opciones = opciones || {};
+  const { data: t, error } = await supabaseClient.from('turnos')
+    .select('id,fecha_hora,duracion_min,estado,pacientes(nombre,apellido,telefono),servicios(nombre)')
+    .eq('id', turnoId).maybeSingle();
+  if (error || !t) { alert('No se encontró el turno.'); return; }
+
+  const cfg = await getConfig();
+  const pac = t.pacientes || {};
+  const servicio = (t.servicios && t.servicios.nombre) || '';
+  const yaConfirmado = t.estado === 'confirmado';
+  const wa = numeroWhatsApp(pac.telefono);
+  const nombre = String(pac.nombre || '').trim().split(/\s+/)[0] || '';
+  const inicio = new Date(t.fecha_hora);
+  const horasIni = Math.max(1, Math.ceil((Number(t.duracion_min) || 60) / 60));
+  const quien = `${pac.nombre || ''} ${pac.apellido || ''}`.trim() || 'el paciente';
+  const cuando = inicio.toLocaleString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false });
+
+  let modal = document.getElementById('cfm-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'cfm-modal';
+    modal.className = 'modal-fondo';
+    document.body.appendChild(modal);
+  }
+  const opcionesHoras = [];
+  for (let h = 1; h <= Math.max(8, horasIni); h++) {
+    opcionesHoras.push(`<option value="${h}"${h === horasIni ? ' selected' : ''}>${h} ${h === 1 ? 'hora' : 'horas'}</option>`);
+  }
+  modal.innerHTML = `
+    <div class="modal-caja">
+      <h2 style="margin-top:0;">${yaConfirmado ? 'Cita confirmada ✓' : 'Confirmar cita'}</h2>
+      <p style="color:var(--color-text-muted);font-size:0.85rem;margin-top:0;">
+        ${htmlSeguro(quien)} · ${htmlSeguro(cuando)}${servicio ? ' · ' + htmlSeguro(servicio) : ''}
+      </p>
+      ${yaConfirmado ? '' : `
+      <div class="form-group">
+        <label for="cfm-horas">¿Cuántas horas durará la atención?</label>
+        <select id="cfm-horas">${opcionesHoras.join('')}</select>
+        <small class="campo-hint">Esas horas quedan bloqueadas en la agenda y en la reserva online.</small>
+      </div>`}
+      <div class="form-group">
+        <label for="cfm-texto">Mensaje para el paciente (puedes editarlo)</label>
+        <textarea id="cfm-texto"></textarea>
+        <small class="campo-hint">No incluye ni pide cédula o RUT.</small>
+      </div>
+      <div class="modal-acciones">
+        ${yaConfirmado
+          ? (wa ? '<button type="button" id="cfm-principal">Enviar por WhatsApp</button>' : '')
+          : `<button type="button" id="cfm-principal">${wa ? 'Confirmar y enviar por WhatsApp' : 'Confirmar cita'}</button>
+             ${wa ? '<button type="button" id="cfm-solo" class="btn-secondary">Solo confirmar</button>' : ''}`}
+        <button type="button" id="cfm-copiar" class="btn-secondary">Copiar mensaje</button>
+        <button type="button" id="cfm-cerrar" class="btn-secondary">Cerrar</button>
+      </div>
+      <p id="cfm-aviso" style="font-size:0.82rem;color:var(--color-text-muted);margin-bottom:0;">
+        ${wa ? 'Se abrirá WhatsApp con el mensaje listo; solo falta que presiones enviar.'
+             : 'Este paciente no tiene teléfono registrado: copia el mensaje y envíalo por otro medio.'}
+      </p>
+    </div>`;
+  modal.hidden = false;
+
+  const g = (id) => document.getElementById(id);
+  const horas = () => (g('cfm-horas') ? Number(g('cfm-horas').value) : Math.max(1, (Number(t.duracion_min) || 60) / 60));
+  const minutos = () => (g('cfm-horas') ? horas() * 60 : (Number(t.duracion_min) || 60));
+  let editado = false;
+  const armarTexto = () => mensajeConfirmacion({
+    nombre, servicio, inicio, mins: minutos(), clinica: cfg.razon_social, direccion: cfg.direccion,
+  });
+  g('cfm-texto').value = armarTexto();
+  g('cfm-texto').addEventListener('input', () => { editado = true; });
+  if (g('cfm-horas')) {
+    g('cfm-horas').addEventListener('change', () => {
+      if (editado) g('cfm-aviso').textContent = 'Ya editaste el mensaje: revisa que las horas indicadas sean las correctas.';
+      else g('cfm-texto').value = armarTexto();
+    });
+  }
+  const cerrar = () => { modal.hidden = true; };
+
+  // Confirma en la base (con avisos de cruce). Devuelve true si quedó confirmada.
+  async function confirmarEnBase() {
+    const mins = minutos();
+    const avisos = await avisosCruceTurno(t, mins);
+    if (avisos.length && !confirm('Atención:\n\n• ' + avisos.join('\n• ') + '\n\n¿Confirmar la cita igual?')) return false;
+    const { error: e } = await supabaseClient.from('turnos').update({ estado: 'confirmado', duracion_min: mins }).eq('id', t.id);
+    if (e) { alert('No se pudo confirmar la cita: ' + e.message); return false; }
+    document.dispatchEvent(new CustomEvent('turnos-cambiaron'));
+    if (opciones.onListo) { try { await opciones.onListo(); } catch (err) { /* no bloquea */ } }
+    return true;
+  }
+  const urlWa = () => `https://wa.me/${wa}?text=${encodeURIComponent(g('cfm-texto').value)}`;
+
+  if (g('cfm-principal')) {
+    g('cfm-principal').addEventListener('click', async () => {
+      const btn = g('cfm-principal');
+      if (yaConfirmado) { if (wa) window.open(urlWa(), '_blank'); return; }
+      btn.disabled = true;
+      // La ventana de WhatsApp se abre YA (con el clic) para que el navegador no la bloquee
+      const ventana = wa ? window.open('', '_blank') : null;
+      const ok = await confirmarEnBase();
+      if (!ok) { if (ventana) ventana.close(); btn.disabled = false; return; }
+      if (ventana) ventana.location.href = urlWa();
+      cerrar();
+    });
+  }
+  if (g('cfm-solo')) {
+    g('cfm-solo').addEventListener('click', async () => {
+      g('cfm-solo').disabled = true;
+      const ok = await confirmarEnBase();
+      if (ok) cerrar(); else g('cfm-solo').disabled = false;
+    });
+  }
+  g('cfm-copiar').addEventListener('click', async () => {
+    const ta = g('cfm-texto');
+    try { await navigator.clipboard.writeText(ta.value); g('cfm-aviso').textContent = '✓ Mensaje copiado.'; }
+    catch (e) { ta.select(); g('cfm-aviso').textContent = 'Selecciona y copia el texto manualmente.'; }
+  });
+  g('cfm-cerrar').addEventListener('click', cerrar);
+  modal.onclick = (e) => { if (e.target === modal) cerrar(); };
+}
+
 // ---------- Campanita de novedades ----------
 // Muestra, arriba a la derecha, las novedades que genera el paciente (reservas online,
 // cotizaciones respondidas, consentimientos firmados a distancia). Cada novedad vive en la
@@ -194,12 +379,20 @@ function iniciarCampanita() {
         </span>
       </div>
       <div class="campanita-lista">
-        ${items.length ? items.map(n => `
+        ${items.length ? items.map(n => {
+          // Reserva online: botón para confirmar la cita y enviar el mensaje al paciente
+          const esReserva = n.tipo === 'reserva_online' && n.turno_id && n.turnos;
+          const pendiente = esReserva && n.turnos.estado === 'pendiente';
+          const confirmada = esReserva && n.turnos.estado === 'confirmado';
+          return `
           <div class="campanita-item${n.leida ? '' : ' sin-leer'}" data-id="${n.id}">
             <div class="campanita-titulo">${htmlSeguro(n.titulo)}</div>
             ${n.detalle ? `<div class="campanita-detalle">${htmlSeguro(n.detalle)}</div>` : ''}
             <div class="campanita-hora">${haceTiempo(n.creado_en)}</div>
-          </div>`).join('') : '<p class="campanita-vacio">Sin novedades por ahora.</p>'}
+            ${pendiente ? `<button type="button" class="btn-sm campanita-accion" data-accion="confirmar-turno" data-turno="${n.turno_id}" data-notif="${n.id}">✓ Confirmar y enviar mensaje</button>` : ''}
+            ${confirmada ? '<div class="campanita-ok">✓ Cita confirmada</div>' : ''}
+          </div>`;
+        }).join('') : '<p class="campanita-vacio">Sin novedades por ahora.</p>'}
       </div>
       <div class="campanita-pie">
         ${avisos === 'default' ? '<button type="button" class="campanita-link" data-accion="activar-avisos">🔔 Activar avisos del navegador</button>' : ''}
@@ -210,8 +403,14 @@ function iniciarCampanita() {
   }
 
   async function cargar() {
-    const { data, error } = await supabaseClient.from('notificaciones').select('*')
+    // Con el estado del turno (v13). Si esa relación aún no existe, se piden solo las novedades.
+    let res = await supabaseClient.from('notificaciones').select('*, turnos(estado)')
       .order('creado_en', { ascending: false }).limit(40);
+    if (res.error) {
+      res = await supabaseClient.from('notificaciones').select('*')
+        .order('creado_en', { ascending: false }).limit(40);
+    }
+    const { data, error } = res;
     if (error) { btn.hidden = true; return; }          // falta v10: sin campanita
     btn.hidden = false;
     items = data || [];
@@ -251,6 +450,15 @@ function iniciarCampanita() {
       } else if (a === 'activar-avisos') {
         try { await Notification.requestPermission(); } catch (err) { /* navegador sin soporte */ }
         pintarPanel();
+      } else if (a === 'confirmar-turno') {
+        panel.hidden = true;
+        const notifId = accion.dataset.notif;
+        await abrirConfirmacionTurno(accion.dataset.turno, {
+          onListo: async () => {
+            if (notifId) await supabaseClient.from('notificaciones').update({ leida: true }).eq('id', notifId);
+            await cargar();
+          },
+        });
       }
       return;
     }
@@ -267,6 +475,7 @@ function iniciarCampanita() {
   cargar();
   setInterval(() => { if (document.visibilityState === 'visible') cargar(); }, 45000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') cargar(); });
+  document.addEventListener('turnos-cambiaron', () => cargar());   // p. ej. se confirmó una cita
 }
 
 async function initLayout(activeKey) {

@@ -86,6 +86,12 @@ Uso **operacional interno** (dueñas/equipo). Aparte tiene páginas públicas pa
 14. `v11_reserva_reconoce_paciente.sql` — RPC públicas `reservar_reconocer` (datos censurados + límite por IP) y `crear_reserva_v2` (asocia por RUT); tabla interna `reservar_consultas_rut`.
 15. `v12_horarios_bloqueos.sql` — `config.horario_semana` (jsonb 0..6), tabla `bloqueos_agenda` (RLS por clínica), `horario_clinica()`, `ocupacion_publica()`, `datos_reserva_publica` con horario por día, y `crear_reserva_v2` con validación de día/horario/bloqueos/choques + limpieza de texto.
 
+16. `v13_notificacion_turno.sql` — `notificaciones.turno_id` (FK a turnos, on delete cascade) y trigger de reserva online que lo guarda; permite el botón "Confirmar y enviar mensaje" en la campanita.
+
+### Decisiones del dueño (2026-10)
+- RUT obligatorio en la reserva online: no se atiende a extranjeros sin RUT / no formalizados.
+- Por ahora una sola clínica (AIVIMED): el multi-clínica queda construido pero sin uso; no se priorizan ajustes para más clínicas.
+
 ### Horarios, bloqueos y confirmación (decisión 2026-10)
 - **Horario por día** (lunes a domingo, cada uno abierto/cerrado con su apertura y cierre) en Configuración; la agenda y la reserva pública lo leen de inmediato (la agenda se refresca sola cada 45 s). Un día cerrado no se puede reservar online.
 - **Bloqueos**: por hora/tramo, día o semana; no se reservan online y se marcan en la agenda. Los turnos ocupan tantas horas como su duración (selector en horas).
