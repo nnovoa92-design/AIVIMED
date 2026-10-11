@@ -82,6 +82,7 @@ Uso **operacional interno** (dueñas/equipo). Aparte tiene páginas públicas pa
 10. `v8_origen_turno.sql` — turnos.origen (interno/online).
 11. `saas/02`–`saas/06` — multi-clínica (ver BITACORA 2026-07/08): organizaciones, RLS por `current_org()`, súper-admin/impersonación, páginas públicas por slug.
 12. `v9_unificar_rut_telefono.sql` — RUT único POR CLÍNICA (antes global) + unifica formato de RUT/teléfonos ya guardados (respaldo en `respaldo_formatos`).
+13. `v11_reserva_reconoce_paciente.sql` — RPC públicas `reservar_reconocer` (datos censurados + límite por IP) y `crear_reserva_v2` (asocia por RUT); tabla interna `reservar_consultas_rut`. (v10 = campanita de novedades, aún no construida.)
 
 ### Formato de RUT y teléfono (decisión 2026-10)
 - Un solo formato en toda la app, vía `assets/js/formatos.js`: RUT `12.345.678-9`, teléfono `+56 9 1234 5678`. Se aplica por id de casilla / `type="tel"` (ver BITACORA). El RUT vive en la columna `pacientes.dni`.

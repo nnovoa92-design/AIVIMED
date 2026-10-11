@@ -115,6 +115,16 @@
 
     .footer { text-align:center; padding:1.5rem 0; font-size:0.75rem; color:var(--muted); }
     .footer a { color:var(--accent); }
+
+    /* Reconocimiento por RUT */
+    [hidden] { display:none !important; }
+    .rut-estado { display:block; margin-top:0.3rem; font-size:0.78rem; color:var(--muted); min-height:1.1em; }
+    .rut-estado.ok { color:var(--primary-dark); }
+    .rut-estado.aviso { color:#92600a; }
+    .saludo { background:var(--primary-light); border-radius:var(--radius); padding:0.8rem 1rem; margin-bottom:0.85rem; font-size:0.95rem; color:var(--primary-dark); }
+    .tel-opciones { display:flex; flex-direction:column; gap:0.5rem; margin-bottom:0.85rem; }
+    .tel-opciones label { display:flex; align-items:center; gap:0.5rem; font-size:0.88rem; color:var(--text); border:1px solid var(--border); border-radius:var(--radius); padding:0.6rem 0.75rem; cursor:pointer; background:var(--surface); }
+    .tel-opciones input[type=radio] { width:auto; margin:0; accent-color:var(--primary); }
   </style>
 </head>
 <body>
@@ -155,21 +165,45 @@
     <div class="panel" id="panel-3">
       <button class="btn-back" id="btn-back-3">&larr; Volver a fecha y hora</button>
       <h3 style="margin-top:0.5rem;">Completa tus datos</h3>
-      <form id="reserva-form">
-        <div class="form-group"><label>Nombre *</label><input id="r-nombre" required /></div>
-        <div class="form-group"><label>Apellido *</label><input id="r-apellido" required /></div>
-        <div class="form-group"><label>RUT</label><input id="r-rut" placeholder="12.345.678-9" /></div>
-        <div class="form-group"><label>Teléfono *</label><input id="r-telefono" required placeholder="+56 9 1234 5678" /></div>
-        <div class="form-group"><label>Email</label><input type="email" id="r-email" /></div>
-        <div class="form-group"><label>Notas o comentarios</label><input id="r-notas" placeholder="Información adicional…" /></div>
-
-        <!-- Resumen -->
-        <div style="background:var(--primary-light);border-radius:var(--radius);padding:0.85rem;margin:1rem 0;font-size:0.85rem;">
-          <strong>Resumen de tu reserva:</strong>
-          <div id="resumen-reserva"></div>
+      <form id="reserva-form" novalidate>
+        <div class="form-group">
+          <label for="r-rut">RUT *</label>
+          <input id="r-rut" placeholder="12.345.678-9" maxlength="12" autocomplete="off" />
+          <small class="rut-estado" id="rut-estado"></small>
         </div>
 
-        <button type="submit" class="btn btn-accent">Confirmar reserva</button>
+        <!-- Aparece al reconocer tu RUT -->
+        <div class="saludo" id="saludo" hidden></div>
+
+        <!-- El resto se muestra según el RUT escrito -->
+        <div id="datos-resto" hidden>
+          <div id="bloque-nombre" hidden>
+            <div class="form-group"><label for="r-nombre">Nombre *</label><input id="r-nombre" autocomplete="given-name" /></div>
+            <div class="form-group"><label for="r-apellido">Apellido *</label><input id="r-apellido" autocomplete="family-name" /></div>
+          </div>
+
+          <div class="tel-opciones" id="bloque-tel-opciones" hidden>
+            <label><input type="radio" name="tel-modo" value="registrado" checked /> <span id="tel-registrado-txt">Usar el número que tenemos registrado</span></label>
+            <label><input type="radio" name="tel-modo" value="otro" /> Indicar otro número</label>
+          </div>
+
+          <div class="form-group" id="bloque-telefono" hidden>
+            <label for="r-telefono">Teléfono *</label>
+            <input type="tel" id="r-telefono" placeholder="+56 9 1234 5678" autocomplete="off" />
+          </div>
+
+          <div class="form-group" id="bloque-email" hidden><label for="r-email">Email (opcional)</label><input type="email" id="r-email" autocomplete="email" /></div>
+          <div class="form-group"><label for="r-notas">Notas o comentarios</label><input id="r-notas" placeholder="Información adicional…" /></div>
+
+          <!-- Resumen -->
+          <div style="background:var(--primary-light);border-radius:var(--radius);padding:0.85rem;margin:1rem 0;font-size:0.85rem;">
+            <strong>Resumen de tu reserva:</strong>
+            <div id="resumen-reserva"></div>
+            <div id="resumen-a-nombre" hidden></div>
+          </div>
+
+          <button type="submit" class="btn btn-accent" id="btn-confirmar">Confirmar reserva</button>
+        </div>
         <p class="error-msg" id="error-3"></p>
       </form>
     </div>
@@ -453,56 +487,184 @@
     // ─── PANEL 3: DATOS + CONFIRMAR ───
     document.getElementById('btn-back-3').addEventListener('click', () => goTo(2));
 
+    // ── Reconocer a la paciente por RUT ──
+    // Estados: vacio | incompleto | invalido | buscando | reconocido | nuevo | clasico
+    // Privacidad: del servidor solo llega el primer nombre y los 4 últimos dígitos del teléfono.
+    const gid = (id) => document.getElementById(id);
+    const primerNombre = (s) => String(s || '').trim().split(/\s+/)[0] || '';
+    let estadoRut = 'vacio';
+    let pacienteConocida = null;     // { nombre, telefono_final }
+    let rutResuelto = '';            // RUT (limpio) que originó el estado actual
+    let rutTimer = null;
+    let rutSeq = 0;                  // descarta respuestas atrasadas del servidor
+
+    function mostrarMensajeRut(texto, clase) {
+      const e = gid('rut-estado');
+      e.className = 'rut-estado' + (clase ? ' ' + clase : '');
+      e.textContent = texto;
+    }
+
+    function actualizarCasillaTelefono() {
+      const modo = (document.querySelector('input[name="tel-modo"]:checked') || {}).value;
+      const tieneRegistrado = !!(pacienteConocida && pacienteConocida.telefono_final);
+      let mostrar = false;
+      if (estadoRut === 'nuevo' || estadoRut === 'clasico') mostrar = true;
+      else if (estadoRut === 'reconocido') mostrar = !tieneRegistrado || modo === 'otro';
+      gid('bloque-telefono').hidden = !mostrar;
+    }
+
+    function aplicarEstadoRut(estado, mensaje, clase) {
+      estadoRut = estado;
+      const resuelto = estado === 'reconocido' || estado === 'nuevo' || estado === 'clasico';
+      const completa = estado === 'nuevo' || estado === 'clasico';
+      gid('datos-resto').hidden = !resuelto;
+      gid('saludo').hidden = estado !== 'reconocido';
+      gid('bloque-nombre').hidden = !completa;
+      gid('bloque-email').hidden = !completa;
+      gid('resumen-a-nombre').hidden = estado !== 'reconocido';
+      gid('bloque-tel-opciones').hidden = !(estado === 'reconocido' && pacienteConocida && pacienteConocida.telefono_final);
+
+      if (estado === 'reconocido' && pacienteConocida) {
+        const n = htmlSeguro(pacienteConocida.nombre);
+        gid('saludo').innerHTML = `Hola${n ? ', <strong>' + n + '</strong>' : ''} 👋 ¡Qué bueno verte de nuevo!`;
+        gid('resumen-a-nombre').innerHTML = `<div>A nombre de <strong>${n || 'ti'}</strong></div>`;
+        if (pacienteConocida.telefono_final) {
+          gid('tel-registrado-txt').textContent = `Usar el número que tenemos registrado: •••• ${pacienteConocida.telefono_final}`;
+        }
+      }
+      actualizarCasillaTelefono();
+      mostrarMensajeRut(mensaje || '', clase);
+    }
+
+    async function evaluarRut() {
+      const valor = gid('r-rut').value;
+      const limpio = rutLimpio(valor);
+      const miConsulta = ++rutSeq;
+      pacienteConocida = null;
+      rutResuelto = '';
+
+      if (!limpio) { aplicarEstadoRut('vacio', 'Escríbelo con o sin puntos: el formato se completa solo.'); return; }
+      if (limpio.length < 7) { aplicarEstadoRut('incompleto', 'Sigue escribiendo tu RUT…'); return; }
+      if (!rutValido(limpio)) {
+        const largo = limpio.length >= 8;
+        aplicarEstadoRut('invalido', largo ? '⚠ El RUT no es válido: revisa el dígito verificador.' : 'Sigue escribiendo tu RUT…', largo ? 'aviso' : '');
+        return;
+      }
+
+      aplicarEstadoRut('buscando', 'Buscando tus datos…');
+      let res = null, fallo = false;
+      try {
+        const { data, error } = await sb.rpc('reservar_reconocer', { p_slug: SLUG, p_rut: formatearRut(valor) });
+        if (error) fallo = true; else res = data;
+      } catch (e) { fallo = true; }
+      if (miConsulta !== rutSeq) return;          // el RUT cambió mientras esperábamos
+
+      rutResuelto = limpio;
+      if (fallo || !res) { aplicarEstadoRut('clasico', ''); return; }   // sin v11: formulario de siempre
+      if (res.encontrado) {
+        pacienteConocida = { nombre: res.nombre || '', telefono_final: res.telefono_final || null };
+        const r = document.querySelector('input[name="tel-modo"][value="registrado"]');
+        if (r) r.checked = true;
+        aplicarEstadoRut('reconocido', '✓ Te reconocimos.', 'ok');
+        return;
+      }
+      if (res.limite) aplicarEstadoRut('nuevo', 'Hiciste muchas consultas seguidas; completa tus datos y reserva igual.', 'aviso');
+      else aplicarEstadoRut('nuevo', 'Completa tus datos para reservar.');
+    }
+
+    gid('r-rut').addEventListener('input', () => {
+      // Si el RUT cambió, se oculta lo anterior al instante (nunca se reserva con datos de otro RUT)
+      if (rutLimpio(gid('r-rut').value) !== rutResuelto && estadoRut !== 'vacio') {
+        pacienteConocida = null;
+        aplicarEstadoRut('buscando', '');
+      }
+      clearTimeout(rutTimer);
+      rutTimer = setTimeout(evaluarRut, 450);
+    });
+    document.querySelectorAll('input[name="tel-modo"]').forEach(r => r.addEventListener('change', actualizarCasillaTelefono));
+    aplicarEstadoRut('vacio', 'Escríbelo con o sin puntos: el formato se completa solo.');
+
     document.getElementById('reserva-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const errorEl = document.getElementById('error-3');
       errorEl.textContent = '';
 
-      const nombre = document.getElementById('r-nombre').value.trim();
-      const apellido = document.getElementById('r-apellido').value.trim();
-      const telefono = document.getElementById('r-telefono').value.trim();
-      if (!nombre || !apellido || !telefono) { errorEl.textContent = 'Completa nombre, apellido y teléfono.'; return; }
+      if (!(estadoRut === 'reconocido' || estadoRut === 'nuevo' || estadoRut === 'clasico')) {
+        errorEl.textContent = 'Escribe tu RUT para continuar.'; return;
+      }
+      const rut = formatearRut(gid('r-rut').value);
+      if (!rutValido(rut)) { errorEl.textContent = 'El RUT no es válido: revisa el dígito verificador.'; return; }
 
-      // Crear reserva vía función segura (crea/reusa paciente + turno en esta clínica)
+      const reconocida = estadoRut === 'reconocido';
+      const tieneRegistrado = reconocida && !!(pacienteConocida && pacienteConocida.telefono_final);
+      const usarRegistrado = tieneRegistrado && (document.querySelector('input[name="tel-modo"]:checked') || {}).value === 'registrado';
+      const nombre = reconocida ? '' : gid('r-nombre').value.trim();
+      const apellido = reconocida ? '' : gid('r-apellido').value.trim();
+      const email = reconocida ? '' : gid('r-email').value.trim();
+      const telefono = usarRegistrado ? '' : gid('r-telefono').value.trim();
+
+      if (!reconocida && (!nombre || !apellido)) { errorEl.textContent = 'Completa tu nombre y apellido.'; return; }
+      if (!usarRegistrado) {
+        if (!telefono) { errorEl.textContent = 'Indica un teléfono de contacto.'; return; }
+        if (!telefonoValidoCL(telefono)) { errorEl.textContent = 'Ingresa un teléfono válido (ej. +56 9 1234 5678).'; return; }
+      }
+
+      // Crear reserva vía función segura (asocia por RUT; crea el paciente solo si no existe)
       const ymd = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
       const fechaHora = new Date(`${ymd}T${selectedSlot}:00`).toISOString();
-      const { error: errReserva } = await sb.rpc('crear_reserva', {
+      const params = {
         p_slug: SLUG,
-        p_nombre: nombre,
-        p_apellido: apellido,
-        p_dni: document.getElementById('r-rut').value || null,
-        p_telefono: telefono,
-        p_email: document.getElementById('r-email').value || null,
+        p_nombre: nombre || null,
+        p_apellido: apellido || null,
+        p_dni: rut,
+        p_telefono: telefono || null,
+        p_email: email || null,
         p_servicio_id: selectedService.id,
         p_fecha_hora: fechaHora,
         p_notas: document.getElementById('r-notas').value || null,
-      });
-      if (errReserva) { errorEl.textContent = 'Error al reservar: ' + errReserva.message; return; }
+      };
+      const btn = gid('btn-confirmar');
+      btn.disabled = true;                          // evita reservar dos veces con doble clic
 
-      // Confirmación
+      let errReserva = null;
+      if (estadoRut !== 'clasico') {
+        ({ error: errReserva } = await sb.rpc('crear_reserva_v2', params));
+      }
+      // Servidor sin v11 (la función no existe) o modo clásico: la reserva de siempre
+      if (estadoRut === 'clasico' || (errReserva && errReserva.code === 'PGRST202')) {
+        if (!telefono) { btn.disabled = false; errorEl.textContent = 'Indica un teléfono de contacto.'; return; }
+        ({ error: errReserva } = await sb.rpc('crear_reserva', params));
+      }
+      if (errReserva) { btn.disabled = false; errorEl.textContent = 'Error al reservar: ' + errReserva.message; return; }
+      btn.disabled = false;
+
+      // Confirmación: a nombre del primer nombre (no se muestra apellido)
+      const aNombreDe = reconocida ? (pacienteConocida.nombre || '') : primerNombre(nombre);
       const fechaStr = selectedDate.toLocaleDateString('es-CL', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
       document.getElementById('confirm-detail').innerHTML = `
-        <div class="row"><span class="row-label">Servicio</span><span>${selectedService.nombre}</span></div>
+        <div class="row"><span class="row-label">Servicio</span><span>${htmlSeguro(selectedService.nombre)}</span></div>
         <div class="row"><span class="row-label">Fecha</span><span>${fechaStr}</span></div>
         <div class="row"><span class="row-label">Hora</span><span>${selectedSlot} hrs</span></div>
-        <div class="row"><span class="row-label">Paciente</span><span>${nombre} ${apellido}</span></div>
+        <div class="row"><span class="row-label">A nombre de</span><span>${htmlSeguro(aNombreDe)}</span></div>
         ${selectedService.precio != null ? `<div class="row"><span class="row-label">Precio</span><span>${fmtPrecio(selectedService.precio)}</span></div>` : ''}
       `;
 
-      // Datos de la reserva para las notificaciones
+      // Datos de la reserva para las notificaciones (al equipo de la clínica)
+      const telTexto = usarRegistrado ? `el registrado (•••• ${pacienteConocida.telefono_final})` : telefono;
       const reserva = { servicio: selectedService.nombre, fecha: fechaStr, hora: selectedSlot,
-        nombre, apellido, telefono, email: document.getElementById('r-email').value.trim(),
+        nombre: reconocida ? aNombreDe : nombre, apellido, rut, telefono: telTexto, email,
         precio: selectedService.precio != null ? fmtPrecio(selectedService.precio) : 'Consultar' };
+      const quien = `${reserva.nombre} ${reserva.apellido}`.trim();
 
       // WhatsApp: se envía al número de AIVIMED (si está configurado)
       let telAivimed = (CFG.telefono || '').replace(/\D/g, '');
       if (telAivimed && telAivimed.length === 9 && telAivimed.startsWith('9')) telAivimed = '56' + telAivimed;
-      const msgWa = `Hola AIVIMED! Reservé una hora:\n- Servicio: ${reserva.servicio}\n- Fecha: ${reserva.fecha}\n- Hora: ${reserva.hora}\n- Nombre: ${reserva.nombre} ${reserva.apellido}\n- Teléfono: ${reserva.telefono}`;
+      const msgWa = `Hola AIVIMED! Reservé una hora:\n- Servicio: ${reserva.servicio}\n- Fecha: ${reserva.fecha}\n- Hora: ${reserva.hora}\n- Nombre: ${quien}\n- RUT: ${reserva.rut}\n- Teléfono: ${reserva.telefono}`;
       document.getElementById('share-wa').href = `https://wa.me/${telAivimed}?text=${encodeURIComponent(msgWa)}`;
 
       // Correo: abre el correo del paciente hacia AIVIMED con la reserva
-      const asunto = `Reserva online — ${reserva.nombre} ${reserva.apellido}`;
-      const cuerpo = `Nueva reserva:\n\nServicio: ${reserva.servicio}\nFecha: ${reserva.fecha}\nHora: ${reserva.hora}\nPaciente: ${reserva.nombre} ${reserva.apellido}\nTeléfono: ${reserva.telefono}\nCorreo: ${reserva.email || '—'}`;
+      const asunto = `Reserva online — ${quien}`;
+      const cuerpo = `Nueva reserva:\n\nServicio: ${reserva.servicio}\nFecha: ${reserva.fecha}\nHora: ${reserva.hora}\nPaciente: ${quien}\nRUT: ${reserva.rut}\nTeléfono: ${reserva.telefono}\nCorreo: ${reserva.email || '—'}`;
       const mailParams = new URLSearchParams({ view:'cm', fs:'1', to: CFG.correo, su: asunto, body: cuerpo });
       document.getElementById('share-mail').href = 'https://mail.google.com/mail/?' + mailParams.toString();
 
@@ -525,7 +687,7 @@
       est.textContent = 'Enviando confirmación por correo…';
       const params = {
         servicio: r.servicio, fecha: r.fecha, hora: r.hora,
-        paciente: `${r.nombre} ${r.apellido}`, telefono: r.telefono,
+        paciente: `${r.nombre} ${r.apellido}`.trim(), telefono: r.telefono,
         email_paciente: r.email, email_aivimed: CFG.correo, precio: r.precio,
       };
       const envios = [ emailjs.send(EMAILJS_CONFIG.serviceId, EMAILJS_CONFIG.templateAivimed, params) ];
