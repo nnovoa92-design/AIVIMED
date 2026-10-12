@@ -353,7 +353,7 @@
     const localInputToISO = (v) => v ? new Date(v).toISOString() : null;
     const dinero = (n) => Number(n || 0).toLocaleString('es-CL', { style:'currency', currency:'CLP', maximumFractionDigits:0 });
     const nombrePac = (p) => p ? `${p.nombre} ${p.apellido || ''}`.trim() : '';
-    const fmtFechaHora = (iso) => new Date(iso).toLocaleString('es-CL', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hour12:false });
+    const fmtVisitaFecha = (iso) => new Date(iso).toLocaleString('es-CL', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hour12:false });
     const fmtDia = (s) => s ? new Date(s + 'T00:00:00').toLocaleDateString('es-CL', { day:'numeric', month:'short', year:'numeric' }) : '';
     const hoyYmd = () => ymd(new Date());
     const pacienteDe = (id) => pacientes.find(p => p.id === id);
@@ -421,7 +421,7 @@
           const tipos = (v.procedimientos || []).map(x => x.tipo);
           const total = (Number(v.valor_procedimientos) || 0) + (Number(v.valor_traslado) || 0);
           return `<tr class="fila-click${v.anulada ? ' anulada' : ''}" data-id="${v.id}">
-            <td>${esc(fmtFechaHora(v.fecha_hora))}</td>
+            <td>${esc(fmtVisitaFecha(v.fecha_hora))}</td>
             <td><strong>${esc(nombrePac(pacienteDe(v.paciente_id)) || '—')}</strong>${v.plan_id ? '' : '<div style="font-size:0.72rem;color:var(--color-text-muted);">Visita suelta</div>'}</td>
             <td>${v.lugar === 'domicilio' ? '🏠 ' + esc(v.direccion || 'Domicilio') : '🏥 Clínica'}</td>
             <td>${chips(tipos)}</td>
@@ -581,7 +581,7 @@
           + (propias.length ? propias.map(v => {
             const est = ESTADOS_VISITA[v.estado] || { label: v.estado, badge: 'badge-gray' };
             return `<div class="bloqueo-item" style="display:flex;justify-content:space-between;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--color-border);">
-              <span>${esc(fmtFechaHora(v.fecha_hora))} · <span class="badge ${est.badge}">${est.label}</span>${v.anulada ? ' <span class="badge badge-red">Anulada</span>' : ''}</span>
+              <span>${esc(fmtVisitaFecha(v.fecha_hora))} · <span class="badge ${est.badge}">${est.label}</span>${v.anulada ? ' <span class="badge badge-red">Anulada</span>' : ''}</span>
               <button type="button" class="btn-secondary btn-sm" data-ver-visita="${v.id}">Abrir</button></div>`;
           }).join('') : '<p class="vacio">Este plan aún no tiene visitas.</p>');
         g('p-visitas-lista').querySelectorAll('[data-ver-visita]').forEach(b => b.addEventListener('click', () => abrirVisita(visitas.find(v => v.id === b.dataset.verVisita))));
