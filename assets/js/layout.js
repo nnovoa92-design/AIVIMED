@@ -3,6 +3,7 @@ const NAV_ITEMS = [
   { key: 'dashboard',      icon: '⊞',  label: 'Inicio',           href: 'dashboard.html' },
   { key: 'pacientes',      icon: '♥',  label: 'Pacientes',         href: 'pacientes.html' },
   { key: 'agenda',         icon: '▦',  label: 'Agenda',            href: 'agenda.html' },
+  { key: 'domiciliaria',   icon: '⌂',  label: 'Atención domiciliaria', href: 'domiciliaria.html' },
   { key: 'sesiones',       icon: '✎',  label: 'Fichas de sesión',  href: 'sesiones.html' },
   { key: 'consentimientos',icon: '✓',  label: 'Consentimientos',   href: 'consentimientos.html' },
   { key: 'cotizaciones',   icon: '▤',  label: 'Cotizaciones',      href: 'cotizaciones.html' },

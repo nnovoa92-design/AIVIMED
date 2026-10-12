@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Atención domiciliaria · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    [hidden] { display:none !important; }
+    .tabs { display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:1rem; }
+    .tabs button { background:var(--color-surface); color:var(--color-text-muted); border:1.5px solid var(--color-border); box-shadow:none; }
+    .tabs button:hover { background:var(--color-bg-soft); color:var(--color-primary-dark); transform:none; box-shadow:none; }
+    .tabs button.activo { background:var(--color-primary); color:#fff; border-color:var(--color-primary); }
+    .filtros { display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.75rem; }
+    .filtros button { padding:0.35rem 0.85rem; font-size:0.8rem; background:transparent; color:var(--color-primary-dark); border:1.5px solid var(--color-border); box-shadow:none; }
+    .filtros button.activo { background:var(--color-primary-light); border-color:var(--color-primary); font-weight:700; }
+    .filtros button:hover { transform:none; box-shadow:none; background:var(--color-bg-soft); }
+    .tabla-scroll { overflow-x:auto; }
+    .chips { display:flex; gap:0.25rem; flex-wrap:wrap; }
+    .chip { background:var(--color-primary-light); color:var(--color-primary-dark); border-radius:999px; padding:0.1rem 0.55rem; font-size:0.72rem; font-weight:600; white-space:nowrap; }
+    tr.fila-click { cursor:pointer; }
+    tr.anulada td { text-decoration:line-through; opacity:0.55; }
+    .procs-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:0.5rem; margin-bottom:1rem; }
+    .proc-check { display:flex; align-items:center; gap:0.5rem; border:1.5px solid var(--color-border); border-radius:var(--radius-sm);
+      padding:0.55rem 0.75rem; cursor:pointer; background:var(--color-surface); font-size:0.9rem; font-weight:600;
+      text-transform:none; letter-spacing:0; color:var(--color-text); margin:0; }
+    .proc-check input { width:auto; margin:0; accent-color:var(--color-primary); }
+    .proc-check:has(input:checked) { border-color:var(--color-primary); background:var(--color-primary-light); }
+    .proc-campos { border:1px solid var(--color-border); border-left:3px solid var(--color-primary); border-radius:var(--radius-sm);
+      background:var(--color-bg-soft); padding:0.85rem 1rem 0.35rem; margin-bottom:1rem; }
+    .proc-campos h4 { margin:0 0 0.6rem; font-size:0.95rem; color:var(--color-primary-dark); }
+    .seccion-titulo { font-size:0.95rem; color:var(--color-primary-dark); margin:1.25rem 0 0.5rem; }
+    .aviso-caja { border-radius:var(--radius-sm); padding:0.6rem 0.85rem; font-size:0.85rem; margin-bottom:0.85rem; }
+    .aviso-caja.rojo { background:#fbe0dd; color:#8a1a18; }
+    .aviso-caja.ambar { background:#fdf0d3; color:#7a5010; }
+    .total-caja { font-size:1.1rem; font-weight:700; color:var(--color-primary-dark); }
+    .acciones-fila { display:flex; gap:0.4rem; flex-wrap:wrap; }
+    .vacio { color:var(--color-text-muted); font-size:0.9rem; padding:1rem 0; }
+    .zona-fila { display:grid; grid-template-columns:2fr 1fr auto auto; gap:0.5rem; align-items:center; margin-bottom:0.5rem; }
+    @media (max-width:640px) { .zona-fila { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Atención domiciliaria</h1></header>
+      <div class="content">
+
+        <div class="card" id="aviso-v14" hidden style="border-left:4px solid var(--color-warning);">
+          <strong>Falta activar este módulo en la base de datos.</strong>
+          <p style="margin:0.4rem 0 0;color:var(--color-text-muted);font-size:0.88rem;">
+            Hay que correr la actualización <code>v14_atencion_domiciliaria.sql</code> en Supabase. Cuando esté lista, recarga esta página.
+          </p>
+        </div>
+
+        <div class="cards-grid" id="resumen"></div>
+
+        <!-- ═══════════ Formulario: plan de cuidado ═══════════ -->
+        <div class="card" id="plan-card" hidden>
+          <h2 id="plan-titulo" style="margin-top:0;">Nuevo plan de cuidado</h2>
+          <form id="plan-form" novalidate>
+            <input type="hidden" id="p-id" />
+            <div class="form-row">
+              <div class="form-group"><label for="p-paciente">Paciente *</label><select id="p-paciente"><option value="">Seleccionar…</option></select></div>
+              <div class="form-group"><label for="p-personal">Profesional a cargo</label><select id="p-personal"><option value="">Sin asignar</option></select></div>
+              <div class="form-group"><label for="p-estado">Estado</label>
+                <select id="p-estado"><option value="activo">Activo</option><option value="suspendido">Suspendido</option><option value="finalizado">Finalizado</option></select>
+              </div>
+            </div>
+
+            <h3 class="seccion-titulo">Procedimientos del plan</h3>
+            <div class="procs-grid" id="p-procs"></div>
+
+            <h3 class="seccion-titulo">Dónde se atiende</h3>
+            <div class="form-row">
+              <div class="form-group"><label for="p-lugar">Lugar habitual</label>
+                <select id="p-lugar"><option value="domicilio">A domicilio</option><option value="clinica">En la clínica</option></select>
+              </div>
+              <div class="form-group" data-dom><label for="p-zona">Zona de traslado</label><select id="p-zona"><option value="">Sin traslado</option></select></div>
+            </div>
+            <div class="form-row" data-dom>
+              <div class="form-group"><label for="p-direccion">Dirección de la visita</label><input id="p-direccion" placeholder="Calle, número, comuna" /></div>
+              <div class="form-group"><label for="p-referencia">Referencias de acceso</label><input id="p-referencia" placeholder="Depto, portón, timbre, piso…" /></div>
+            </div>
+
+            <h3 class="seccion-titulo">Indicación médica</h3>
+            <div class="form-row">
+              <div class="form-group"><label for="p-medico">Médico o centro que indica</label><input id="p-medico" /></div>
+              <div class="form-group"><label for="p-fecha-ind">Fecha de la indicación</label><input type="date" id="p-fecha-ind" /></div>
+              <div class="form-group"><label for="p-vigencia">Vigente hasta</label><input type="date" id="p-vigencia" /></div>
+            </div>
+            <div class="form-group"><label for="p-indicacion">Indicación / diagnóstico</label>
+              <textarea id="p-indicacion" rows="3" placeholder="Qué indicó el médico: procedimiento, medicamento y dosis, frecuencia, duración…"></textarea>
+            </div>
+
+            <h3 class="seccion-titulo">Frecuencia</h3>
+            <div class="form-row">
+              <div class="form-group"><label for="p-frecuencia">Frecuencia</label>
+                <select id="p-frecuencia">
+                  <option value="unica">Visita única</option><option value="diaria">Diaria</option>
+                  <option value="dia_por_medio">Día por medio</option><option value="semanal">Semanal</option><option value="otra">Otra</option>
+                </select>
+              </div>
+              <div class="form-group"><label for="p-frec-detalle">Detalle de la frecuencia</label><input id="p-frec-detalle" placeholder="Ej: lunes, miércoles y viernes" /></div>
+              <div class="form-group"><label for="p-visitas-total">Total de visitas</label><input type="number" id="p-visitas-total" min="1" /></div>
+              <div class="form-group"><label for="p-inicio">Fecha de inicio</label><input type="date" id="p-inicio" /></div>
+            </div>
+
+            <h3 class="seccion-titulo">Cuidador o familiar</h3>
+            <div class="form-row">
+              <div class="form-group"><label for="p-cuid-nombre">Nombre</label><input id="p-cuid-nombre" /></div>
+              <div class="form-group"><label for="p-cuid-telefono">Teléfono</label><input id="p-cuid-telefono" placeholder="+56 9 1234 5678" /></div>
+              <div class="form-group"><label for="p-cuid-parentesco">Parentesco</label><input id="p-cuid-parentesco" placeholder="Hija, esposo, cuidadora…" /></div>
+            </div>
+
+            <h3 class="seccion-titulo">Quién paga</h3>
+            <div class="form-row">
+              <div class="form-group"><label for="p-pag-tipo">Paga</label>
+                <select id="p-pag-tipo"><option value="paciente">El propio paciente</option><option value="tercero">Un tercero</option></select>
+              </div>
+            </div>
+            <div class="form-row" id="p-pag-datos" hidden>
+              <div class="form-group"><label for="p-pag-nombre">Nombre o razón social</label><input id="p-pag-nombre" /></div>
+              <div class="form-group"><label for="p-pag-rut">RUT</label><input id="p-pag-rut" placeholder="12.345.678-9" maxlength="12" autocomplete="off" /></div>
+              <div class="form-group"><label for="p-pag-telefono">Teléfono</label><input id="p-pag-telefono" placeholder="+56 9 1234 5678" /></div>
+              <div class="form-group"><label for="p-pag-email">Correo</label><input type="email" id="p-pag-email" /></div>
+            </div>
+
+            <div class="form-group"><label for="p-notas">Notas</label><textarea id="p-notas" rows="2"></textarea></div>
+
+            <div id="p-visitas-box" hidden>
+              <h3 class="seccion-titulo">Visitas de este plan</h3>
+              <div id="p-visitas-lista"></div>
+            </div>
+
+            <button type="submit" id="p-guardar">Guardar plan</button>
+            <button type="button" id="p-agendar" class="btn-secondary" hidden>+ Agendar visita de este plan</button>
+            <button type="button" id="p-cancelar" class="btn-secondary">Cerrar</button>
+            <p class="error-message" id="p-error"></p>
+          </form>
+        </div>
+
+        <!-- ═══════════ Formulario: visita ═══════════ -->
+        <div class="card" id="visita-card" hidden>
+          <h2 id="visita-titulo" style="margin-top:0;">Nueva visita</h2>
+          <form id="visita-form" novalidate>
+            <input type="hidden" id="v-id" />
+            <div class="form-row">
+              <div class="form-group"><label for="v-paciente">Paciente *</label><select id="v-paciente"><option value="">Seleccionar…</option></select></div>
+              <div class="form-group"><label for="v-plan">Plan de cuidado</label><select id="v-plan"><option value="">Visita suelta (sin plan)</option></select></div>
+              <div class="form-group"><label for="v-fecha">Fecha y hora *</label><input type="datetime-local" id="v-fecha" /></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label for="v-lugar">Lugar</label>
+                <select id="v-lugar"><option value="domicilio">A domicilio</option><option value="clinica">En la clínica</option></select>
+              </div>
+              <div class="form-group"><label for="v-personal">Profesional</label><select id="v-personal"><option value="">Sin asignar</option></select></div>
+              <div class="form-group"><label for="v-estado">Estado</label>
+                <select id="v-estado"><option value="programada">Programada</option><option value="realizada">Realizada</option><option value="cancelada">Cancelada</option></select>
+              </div>
+            </div>
+            <div class="form-row" data-dom-v>
+              <div class="form-group"><label for="v-direccion">Dirección de la visita</label><input id="v-direccion" placeholder="Calle, número, comuna" /></div>
+              <div class="form-group"><label for="v-zona">Zona de traslado</label><select id="v-zona"><option value="">Sin traslado</option></select></div>
+            </div>
+
+            <div id="v-aviso-indicacion"></div>
+
+            <h3 class="seccion-titulo">Procedimientos de esta visita *</h3>
+            <div class="procs-grid" id="v-procs"></div>
+            <div id="v-campos"></div>
+
+            <h3 class="seccion-titulo">Signos vitales</h3>
+            <div class="form-row">
+              <div class="form-group"><label for="v-pa">Presión arterial</label><input id="v-pa" placeholder="120/80" /></div>
+              <div class="form-group"><label for="v-fc">Frecuencia cardíaca (lpm)</label><input type="number" id="v-fc" min="0" /></div>
+              <div class="form-group"><label for="v-temp">Temperatura (°C)</label><input type="number" id="v-temp" step="0.1" min="0" /></div>
+              <div class="form-group"><label for="v-sat">Saturación (%)</label><input type="number" id="v-sat" min="0" max="100" /></div>
+            </div>
+
+            <div class="form-group"><label for="v-obs">Observaciones</label><textarea id="v-obs" rows="3"></textarea></div>
+            <div class="form-row">
+              <div class="form-group"><label for="v-indicaciones">Indicaciones al cuidador o paciente</label><textarea id="v-indicaciones" rows="2"></textarea></div>
+              <div class="form-group"><label for="v-recibe">Quién recibe la atención / da su conformidad</label><input id="v-recibe" /></div>
+            </div>
+
+            <h3 class="seccion-titulo">Valor de la visita</h3>
+            <div class="form-row">
+              <div class="form-group"><label for="v-val-proc">Procedimientos ($)</label><input type="number" id="v-val-proc" min="0" step="1" /></div>
+              <div class="form-group"><label for="v-val-tras">Traslado ($)</label><input type="number" id="v-val-tras" min="0" step="1" /></div>
+              <div class="form-group"><label>Total</label><div class="total-caja" id="v-total">$0</div></div>
+            </div>
+            <button type="button" id="v-recalcular" class="btn-secondary btn-sm" style="margin-bottom:1rem;">Recalcular según tarifas</button>
+
+            <div>
+              <button type="submit" id="v-guardar">Guardar visita</button>
+              <button type="button" id="v-cancelar" class="btn-secondary">Cerrar</button>
+              <button type="button" id="v-anular" class="btn-danger" hidden>Anular visita</button>
+            </div>
+            <p class="error-message" id="v-error"></p>
+          </form>
+        </div>
+
+        <!-- ═══════════ Listados ═══════════ -->
+        <div class="card" id="listados">
+          <div class="tabs">
+            <button type="button" data-vista="visitas" class="activo">Visitas</button>
+            <button type="button" data-vista="planes">Planes de cuidado</button>
+            <button type="button" data-vista="tarifas">Tarifas</button>
+          </div>
+
+          <div id="vista-visitas">
+            <div class="toolbar">
+              <div class="filtros" id="filtros-visitas">
+                <button type="button" data-f="hoy">Hoy</button>
+                <button type="button" data-f="proximas" class="activo">Próximas</button>
+                <button type="button" data-f="realizadas">Realizadas</button>
+                <button type="button" data-f="todas">Todas</button>
+              </div>
+              <button type="button" id="btn-nueva-visita">+ Nueva visita</button>
+            </div>
+            <div class="tabla-scroll" id="lista-visitas"></div>
+          </div>
+
+          <div id="vista-planes" hidden>
+            <div class="toolbar">
+              <div class="filtros" id="filtros-planes">
+                <button type="button" data-f="activo" class="activo">Activos</button>
+                <button type="button" data-f="todos">Todos</button>
+              </div>
+              <button type="button" id="btn-nuevo-plan">+ Nuevo plan</button>
+            </div>
+            <div class="tabla-scroll" id="lista-planes"></div>
+          </div>
+
+          <div id="vista-tarifas" hidden>
+            <h3 class="seccion-titulo" style="margin-top:0;">Valor de cada procedimiento</h3>
+            <p style="color:var(--color-text-muted);font-size:0.85rem;margin-top:0;">
+              El valor de una visita es la suma de sus procedimientos más el traslado según la zona. Puedes ajustarlo en cada visita.
+            </p>
+            <div id="tarifas-proc"></div>
+            <button type="button" id="guardar-tarifas">Guardar valores</button>
+            <span id="tarifas-ok" style="color:var(--color-success);font-size:0.85rem;margin-left:0.5rem;"></span>
+
+            <h3 class="seccion-titulo">Zonas de traslado (según la lejanía)</h3>
+            <p style="color:var(--color-text-muted);font-size:0.85rem;margin-top:0;">
+              Crea las zonas que atiendes y cuánto cobras de traslado en cada una. Ej: “Hasta 5 km”, “Entre 5 y 15 km”, “Sector rural”.
+            </p>
+            <div id="zonas-lista"></div>
+            <form id="zona-form" class="zona-fila" style="margin-top:0.75rem;" novalidate>
+              <input id="zona-nombre" placeholder="Nombre de la zona" />
+              <input type="number" id="zona-valor" placeholder="Valor $" min="0" step="1" />
+              <button type="submit">Agregar zona</button>
+            </form>
+            <p class="error-message" id="zona-error"></p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/formatos.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    // ─── Procedimientos y los datos que se registran en cada uno ───
+    const PROCS = {
+      curacion: { nombre: 'Curación', campos: [
+        { k:'zona', label:'Zona / ubicación' },
+        { k:'tipo_herida', label:'Tipo de herida', t:'select', op:['Quirúrgica','Úlcera por presión','Pie diabético','Úlcera venosa','Quemadura','Traumática','Otra'] },
+        { k:'largo_cm', label:'Largo (cm)', t:'number' }, { k:'ancho_cm', label:'Ancho (cm)', t:'number' }, { k:'profundidad_cm', label:'Profundidad (cm)', t:'number' },
+        { k:'lecho', label:'Aspecto del lecho', t:'select', op:['Granulación','Esfacelo','Necrosis','Epitelización','Mixto'] },
+        { k:'exudado', label:'Exudado', t:'select', op:['Sin exudado','Escaso','Moderado','Abundante'] },
+        { k:'infeccion', label:'Signos de infección', t:'select', op:['No','Sospecha','Sí'] },
+        { k:'materiales', label:'Apósitos / materiales usados' },
+        { k:'detalle', label:'Detalle del procedimiento', t:'textarea' },
+      ] },
+      sonda: { nombre: 'Sonda', campos: [
+        { k:'tipo', label:'Tipo de sonda', t:'select', op:['Vesical (Foley)','Nasogástrica','Gastrostomía','Otra'] },
+        { k:'accion', label:'Qué se hizo', t:'select', op:['Instalación','Cambio','Retiro','Control / lavado'] },
+        { k:'calibre', label:'Calibre' },
+        { k:'motivo', label:'Motivo' },
+        { k:'contenido', label:'Características de la orina / contenido' },
+        { k:'proximo_cambio', label:'Próximo cambio', t:'date' },
+        { k:'detalle', label:'Detalle del procedimiento', t:'textarea' },
+      ] },
+      retiro_puntos: { nombre: 'Retiro de puntos', campos: [
+        { k:'zona', label:'Zona' },
+        { k:'n_puntos', label:'Número de puntos', t:'number' },
+        { k:'estado_herida', label:'Estado de la herida', t:'select', op:['Cicatrización adecuada','Signos de infección','Dehiscencia parcial','Otro'] },
+        { k:'detalle', label:'Detalle del procedimiento', t:'textarea' },
+      ] },
+      ileostomia: { nombre: 'Ileostomía', campos: [
+        { k:'estoma', label:'Estado del estoma', t:'select', op:['Rosado / viable','Pálido','Oscuro / necrótico','Edematoso'] },
+        { k:'piel', label:'Piel alrededor del estoma', t:'select', op:['Sana','Eritema','Excoriada','Dermatitis'] },
+        { k:'efluente', label:'Características del efluente', t:'select', op:['Líquido','Pastoso','Gaseoso','Escaso'] },
+        { k:'accion', label:'Qué se hizo', t:'select', op:['Cambio de bolsa / placa','Higiene','Educación al cuidador'] },
+        { k:'detalle', label:'Detalle del procedimiento', t:'textarea' },
+      ] },
+      medicamentos: { nombre: 'Administración de medicamentos', campos: [
+        { k:'farmaco', label:'Fármaco' },
+        { k:'dosis', label:'Dosis' },
+        { k:'via', label:'Vía', t:'select', op:['Oral','Intramuscular','Endovenosa','Subcutánea','Tópica','Inhalatoria','Otra'] },
+        { k:'hora', label:'Hora de administración', t:'time' },
+        { k:'indicacion', label:'Indicación médica asociada (receta / orden)' },
+        { k:'reaccion', label:'Reacción', t:'select', op:['Sin reacción','Reacción leve (describir)','Reacción importante (describir)'] },
+        { k:'detalle', label:'Detalle', t:'textarea' },
+      ] },
+      vacunacion: { nombre: 'Vacunación', campos: [
+        { k:'vacuna', label:'Vacuna' },
+        { k:'laboratorio', label:'Laboratorio' },
+        { k:'lote', label:'Lote' },
+        { k:'vencimiento_lote', label:'Vencimiento del lote', t:'date' },
+        { k:'dosis', label:'Dosis', t:'select', op:['Primera','Segunda','Tercera','Refuerzo','Única'] },
+        { k:'via', label:'Vía', t:'select', op:['Intramuscular','Subcutánea','Intradérmica','Oral'] },
+        { k:'sitio', label:'Sitio de aplicación', t:'select', op:['Deltoides derecho','Deltoides izquierdo','Muslo derecho','Muslo izquierdo','Glúteo','Otro'] },
+        { k:'reaccion', label:'Reacción inmediata', t:'select', op:['Sin reacción','Reacción leve (describir)','Reacción importante (describir)'] },
+        { k:'proxima_dosis', label:'Próxima dosis o refuerzo', t:'date' },
+        { k:'detalle', label:'Observaciones', t:'textarea' },
+      ] },
+      cuidados_generales: { nombre: 'Cuidados generales', campos: [
+        { k:'actividades', label:'Actividades realizadas', t:'textarea' },
+        { k:'detalle', label:'Detalle', t:'textarea' },
+      ] },
+    };
+    const ORDEN = ['curacion','sonda','retiro_puntos','ileostomia','medicamentos','vacunacion','cuidados_generales'];
+    // Datos mínimos para dar una visita por REALIZADA (trazabilidad del registro clínico)
+    const REQUERIDOS = {
+      curacion: ['zona'], sonda: ['accion'], retiro_puntos: ['zona'], ileostomia: ['accion'],
+      medicamentos: ['farmaco', 'dosis', 'via'], vacunacion: ['vacuna', 'lote', 'dosis'], cuidados_generales: ['actividades'],
+    };
+    const etiquetaCampo = (t, k) => ((PROCS[t].campos.find(c => c.k === k)) || { label: k }).label;
+    const FRECUENCIAS = { unica:'Visita única', diaria:'Diaria', dia_por_medio:'Día por medio', semanal:'Semanal', otra:'Otra' };
+    const ESTADOS_VISITA = {
+      programada: { label:'Programada', badge:'badge-blue' },
+      realizada:  { label:'Realizada',  badge:'badge-green' },
+      cancelada:  { label:'Cancelada',  badge:'badge-gray' },
+    };
+
+    // ─── Estado ───
+    let pacientes = [], personal = [], zonas = [], tarifas = {}, planes = [], visitas = [];
+    let filtroVisitas = 'proximas', filtroPlanes = 'activo';
+    let valoresEditados = { proc:false, tras:false };
+    const g = (id) => document.getElementById(id);
+    const esc = htmlSeguro;
+
+    // ─── Utilidades ───
+    const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const isoToLocalInput = (iso) => { if (!iso) return ''; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16); };
+    const localInputToISO = (v) => v ? new Date(v).toISOString() : null;
+    const dinero = (n) => Number(n || 0).toLocaleString('es-CL', { style:'currency', currency:'CLP', maximumFractionDigits:0 });
+    const nombrePac = (p) => p ? `${p.nombre} ${p.apellido || ''}`.trim() : '';
+    const fmtFechaHora = (iso) => new Date(iso).toLocaleString('es-CL', { weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', hour12:false });
+    const fmtDia = (s) => s ? new Date(s + 'T00:00:00').toLocaleDateString('es-CL', { day:'numeric', month:'short', year:'numeric' }) : '';
+    const hoyYmd = () => ymd(new Date());
+    const pacienteDe = (id) => pacientes.find(p => p.id === id);
+    const chips = (arr) => `<div class="chips">${(arr || []).map(t => `<span class="chip">${esc((PROCS[t] || {}).nombre || t)}</span>`).join('')}</div>`;
+
+    // ─── Datos ───
+    async function cargarBase() {
+      const [p, pe, z, t] = await Promise.all([
+        supabaseClient.from('pacientes').select('id,nombre,apellido,dni,telefono,direccion').eq('activo', true).order('apellido'),
+        supabaseClient.from('personal').select('id,nombre,apellido').eq('activo', true).order('apellido'),
+        supabaseClient.from('zonas_traslado').select('*').order('orden').order('nombre'),
+        supabaseClient.from('tarifas_procedimiento').select('*'),
+      ]);
+      pacientes = p.data || [];
+      personal = pe.data || [];
+      if (z.error || t.error) return false;                 // falta v14
+      zonas = z.data || [];
+      tarifas = {};
+      (t.data || []).forEach(r => { tarifas[r.codigo] = Number(r.valor) || 0; });
+      return true;
+    }
+    async function cargarPlanes() {
+      const { data } = await supabaseClient.from('planes_cuidado').select('*').order('creado_en', { ascending: false });
+      planes = data || [];
+    }
+    async function cargarVisitas() {
+      const { data } = await supabaseClient.from('visitas_cuidado').select('*').order('fecha_hora', { ascending: false }).limit(600);
+      visitas = data || [];
+    }
+
+    // ─── Resumen ───
+    function renderResumen() {
+      const hoy = hoyYmd();
+      const ini = new Date(); ini.setHours(0,0,0,0);
+      const fin = new Date(ini); fin.setDate(fin.getDate() + 1);
+      const sem = new Date(ini); sem.setDate(sem.getDate() + 8);
+      const vivas = visitas.filter(v => !v.anulada);
+      const deHoy = vivas.filter(v => new Date(v.fecha_hora) >= ini && new Date(v.fecha_hora) < fin && v.estado !== 'cancelada').length;
+      const prox = vivas.filter(v => v.estado === 'programada' && new Date(v.fecha_hora) >= fin && new Date(v.fecha_hora) < sem).length;
+      const activos = planes.filter(p => p.estado === 'activo');
+      const vencidas = activos.filter(p => p.vigencia_hasta && p.vigencia_hasta < hoy).length;
+      const tarjeta = (val, lbl, alerta) => `<div class="card stat-card"><div class="stat-value"${alerta ? ' style="color:var(--color-danger)"' : ''}>${val}</div><div class="stat-label">${lbl}</div></div>`;
+      g('resumen').innerHTML = tarjeta(deHoy, 'Visitas de hoy') + tarjeta(prox, 'Próximos 7 días') + tarjeta(activos.length, 'Planes activos')
+        + tarjeta(vencidas, 'Indicaciones vencidas', vencidas > 0);
+    }
+
+    // ─── Lista de visitas ───
+    function visitasFiltradas() {
+      const ini = new Date(); ini.setHours(0,0,0,0);
+      const fin = new Date(ini); fin.setDate(fin.getDate() + 1);
+      let lista = visitas.slice();
+      if (filtroVisitas === 'hoy') lista = lista.filter(v => !v.anulada && v.estado !== 'cancelada' && new Date(v.fecha_hora) >= ini && new Date(v.fecha_hora) < fin);
+      else if (filtroVisitas === 'proximas') lista = lista.filter(v => !v.anulada && v.estado === 'programada' && new Date(v.fecha_hora) >= ini);
+      else if (filtroVisitas === 'realizadas') lista = lista.filter(v => !v.anulada && v.estado === 'realizada');
+      lista.sort((a, b) => new Date(a.fecha_hora) - new Date(b.fecha_hora));
+      if (filtroVisitas !== 'proximas' && filtroVisitas !== 'hoy') lista.reverse();
+      return lista;
+    }
+    function renderVisitas() {
+      const lista = visitasFiltradas();
+      if (!lista.length) { g('lista-visitas').innerHTML = '<p class="vacio">No hay visitas en esta vista.</p>'; return; }
+      g('lista-visitas').innerHTML = `<table><thead><tr><th>Fecha y hora</th><th>Paciente</th><th>Lugar</th><th>Procedimientos</th><th>Estado</th><th>Total</th></tr></thead><tbody>
+        ${lista.map(v => {
+          const est = ESTADOS_VISITA[v.estado] || { label: v.estado, badge: 'badge-gray' };
+          const tipos = (v.procedimientos || []).map(x => x.tipo);
+          const total = (Number(v.valor_procedimientos) || 0) + (Number(v.valor_traslado) || 0);
+          return `<tr class="fila-click${v.anulada ? ' anulada' : ''}" data-id="${v.id}">
+            <td>${esc(fmtFechaHora(v.fecha_hora))}</td>
+            <td><strong>${esc(nombrePac(pacienteDe(v.paciente_id)) || '—')}</strong>${v.plan_id ? '' : '<div style="font-size:0.72rem;color:var(--color-text-muted);">Visita suelta</div>'}</td>
+            <td>${v.lugar === 'domicilio' ? '🏠 ' + esc(v.direccion || 'Domicilio') : '🏥 Clínica'}</td>
+            <td>${chips(tipos)}</td>
+            <td><span class="badge ${est.badge}">${est.label}</span>${v.anulada ? ' <span class="badge badge-red">Anulada</span>' : ''}</td>
+            <td>${dinero(total)}</td></tr>`;
+        }).join('')}</tbody></table>`;
+      g('lista-visitas').querySelectorAll('tr[data-id]').forEach(tr => tr.addEventListener('click', () => abrirVisita(visitas.find(v => v.id === tr.dataset.id))));
+    }
+
+    // ─── Lista de planes ───
+    function progreso(plan) {
+      const hechas = visitas.filter(v => v.plan_id === plan.id && v.estado === 'realizada' && !v.anulada).length;
+      return plan.visitas_total ? `${hechas} de ${plan.visitas_total}` : `${hechas} realizadas`;
+    }
+    function renderPlanes() {
+      const lista = planes.filter(p => filtroPlanes === 'todos' || p.estado === 'activo');
+      if (!lista.length) { g('lista-planes').innerHTML = '<p class="vacio">No hay planes en esta vista.</p>'; return; }
+      const hoy = hoyYmd();
+      g('lista-planes').innerHTML = `<table><thead><tr><th>Paciente</th><th>Procedimientos</th><th>Frecuencia</th><th>Avance</th><th>Indicación</th><th>Estado</th><th></th></tr></thead><tbody>
+        ${lista.map(p => {
+          const vencida = p.vigencia_hasta && p.vigencia_hasta < hoy;
+          const estBadge = p.estado === 'activo' ? 'badge-green' : (p.estado === 'suspendido' ? 'badge-yellow' : 'badge-gray');
+          return `<tr data-id="${p.id}">
+            <td><strong>${esc(nombrePac(pacienteDe(p.paciente_id)) || '—')}</strong>
+              ${p.pagador_tipo === 'tercero' ? `<div style="font-size:0.72rem;color:var(--color-text-muted);">Paga: ${esc(p.pagador_nombre || 'tercero')}</div>` : ''}</td>
+            <td>${chips(p.procedimientos)}</td>
+            <td>${esc(FRECUENCIAS[p.frecuencia] || p.frecuencia)}${p.frecuencia_detalle ? `<div style="font-size:0.72rem;color:var(--color-text-muted);">${esc(p.frecuencia_detalle)}</div>` : ''}</td>
+            <td>${esc(progreso(p))}</td>
+            <td>${p.vigencia_hasta ? (vencida ? '<span class="badge badge-red">Vencida</span> ' : 'Hasta ') + esc(fmtDia(p.vigencia_hasta)) : '<span style="color:var(--color-text-muted);">Sin fecha</span>'}</td>
+            <td><span class="badge ${estBadge}">${esc(p.estado)}</span></td>
+            <td><div class="acciones-fila">
+              <button type="button" class="btn-secondary btn-sm" data-editar="${p.id}">Abrir</button>
+              <button type="button" class="btn-sm" data-agendar="${p.id}">+ Visita</button></div></td></tr>`;
+        }).join('')}</tbody></table>`;
+      g('lista-planes').querySelectorAll('[data-editar]').forEach(b => b.addEventListener('click', () => abrirPlan(planes.find(p => p.id === b.dataset.editar))));
+      g('lista-planes').querySelectorAll('[data-agendar]').forEach(b => b.addEventListener('click', () => abrirVisita(null, { plan: planes.find(p => p.id === b.dataset.agendar) })));
+    }
+
+    // ─── Tarifas y zonas ───
+    function renderTarifas() {
+      g('tarifas-proc').innerHTML = `<div class="form-row">${ORDEN.map(t => `
+        <div class="form-group"><label for="tar-${t}">${esc(PROCS[t].nombre)} ($)</label>
+          <input type="number" id="tar-${t}" min="0" step="1" value="${tarifas[t] ?? 0}" /></div>`).join('')}</div>`;
+      renderZonas();
+    }
+    function renderZonas() {
+      if (!zonas.length) { g('zonas-lista').innerHTML = '<p class="vacio">Aún no hay zonas. Agrega la primera abajo.</p>'; return; }
+      g('zonas-lista').innerHTML = zonas.map(z => `
+        <div class="zona-fila" data-id="${z.id}">
+          <input value="${esc(z.nombre)}" data-campo="nombre" aria-label="Nombre de la zona" />
+          <input type="number" min="0" step="1" value="${Number(z.valor) || 0}" data-campo="valor" aria-label="Valor" />
+          <label style="display:flex;align-items:center;gap:0.35rem;margin:0;text-transform:none;letter-spacing:0;">
+            <input type="checkbox" data-campo="activo" ${z.activo ? 'checked' : ''} style="width:auto;" /> Activa</label>
+          <button type="button" class="btn-secondary btn-sm" data-guardar-zona="${z.id}">Guardar</button>
+        </div>`).join('');
+      g('zonas-lista').querySelectorAll('[data-guardar-zona]').forEach(b => b.addEventListener('click', async () => {
+        const fila = b.closest('.zona-fila');
+        const payload = {
+          nombre: fila.querySelector('[data-campo="nombre"]').value.trim(),
+          valor: Number(fila.querySelector('[data-campo="valor"]').value) || 0,
+          activo: fila.querySelector('[data-campo="activo"]').checked,
+        };
+        if (!payload.nombre) { alert('La zona necesita un nombre.'); return; }
+        const { error } = await supabaseClient.from('zonas_traslado').update(payload).eq('id', b.dataset.guardarZona);
+        if (error) { alert('No se pudo guardar: ' + error.message); return; }
+        await cargarBase(); renderTarifas(); poblarZonas();
+      }));
+    }
+    g('zona-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = g('zona-error'); err.textContent = '';
+      const nombre = g('zona-nombre').value.trim();
+      if (!nombre) { err.textContent = 'Escribe el nombre de la zona.'; return; }
+      const { error } = await supabaseClient.from('zonas_traslado').insert({
+        nombre, valor: Number(g('zona-valor').value) || 0, orden: zonas.length + 1,
+      });
+      if (error) { err.textContent = 'No se pudo agregar: ' + error.message; return; }
+      g('zona-nombre').value = ''; g('zona-valor').value = '';
+      await cargarBase(); renderTarifas(); poblarZonas();
+    });
+    g('guardar-tarifas').addEventListener('click', async () => {
+      const org = await orgEfectiva();
+      if (!org) { alert('No se pudo determinar la clínica activa.'); return; }
+      const filas = ORDEN.map(t => ({ organizacion_id: org, codigo: t, valor: Number(g('tar-' + t).value) || 0, actualizado_en: new Date().toISOString() }));
+      const { error } = await supabaseClient.from('tarifas_procedimiento').upsert(filas, { onConflict: 'organizacion_id,codigo' });
+      if (error) { alert('No se pudieron guardar los valores: ' + error.message); return; }
+      filas.forEach(f => { tarifas[f.codigo] = f.valor; });
+      g('tarifas-ok').textContent = '✓ Guardado';
+      setTimeout(() => { g('tarifas-ok').textContent = ''; }, 2500);
+    });
+
+    // ─── Selectores ───
+    function poblarSelectores() {
+      const opPac = '<option value="">Seleccionar…</option>' + pacientes.map(p => `<option value="${p.id}">${esc(p.apellido + ', ' + p.nombre)}${p.dni ? ' · ' + esc(p.dni) : ''}</option>`).join('');
+      const opPer = '<option value="">Sin asignar</option>' + personal.map(p => `<option value="${p.id}">${esc(p.nombre + ' ' + p.apellido)}</option>`).join('');
+      g('p-paciente').innerHTML = opPac; g('v-paciente').innerHTML = opPac;
+      g('p-personal').innerHTML = opPer; g('v-personal').innerHTML = opPer;
+      poblarZonas();
+    }
+    function poblarZonas() {
+      const op = '<option value="">Sin traslado</option>' + zonas.filter(z => z.activo).map(z => `<option value="${z.id}">${esc(z.nombre)} · ${dinero(z.valor)}</option>`).join('');
+      const pz = g('p-zona').value, vz = g('v-zona').value;
+      g('p-zona').innerHTML = op; g('v-zona').innerHTML = op;
+      g('p-zona').value = pz; g('v-zona').value = vz;
+    }
+    function dibujarChecksProcs(contenedor, prefijo) {
+      g(contenedor).innerHTML = ORDEN.map(t => `
+        <label class="proc-check"><input type="checkbox" id="${prefijo}-${t}" value="${t}" /> ${esc(PROCS[t].nombre)}</label>`).join('');
+    }
+
+    // ─── Formulario de PLAN ───
+    function actualizarDomPlan() {
+      const dom = g('p-lugar').value === 'domicilio';
+      document.querySelectorAll('#plan-form [data-dom]').forEach(el => { el.hidden = !dom; });
+    }
+    function actualizarPagador() { g('p-pag-datos').hidden = g('p-pag-tipo').value !== 'tercero'; }
+
+    function abrirPlan(plan) {
+      cerrarVisita();
+      g('plan-card').hidden = false;
+      g('p-error').textContent = '';
+      g('plan-titulo').textContent = plan ? 'Plan de cuidado' : 'Nuevo plan de cuidado';
+      g('p-id').value = plan ? plan.id : '';
+      g('p-paciente').value = plan ? plan.paciente_id : '';
+      g('p-personal').value = plan ? (plan.personal_id || '') : '';
+      g('p-estado').value = plan ? plan.estado : 'activo';
+      ORDEN.forEach(t => { g('pp-' + t).checked = !!(plan && (plan.procedimientos || []).includes(t)); });
+      g('p-lugar').value = plan ? plan.lugar : 'domicilio';
+      g('p-zona').value = plan ? (plan.zona_id || '') : '';
+      g('p-direccion').value = plan ? (plan.direccion || '') : '';
+      g('p-referencia').value = plan ? (plan.referencia_acceso || '') : '';
+      g('p-medico').value = plan ? (plan.medico_indica || '') : '';
+      g('p-fecha-ind').value = plan ? (plan.fecha_indicacion || '') : '';
+      g('p-vigencia').value = plan ? (plan.vigencia_hasta || '') : '';
+      g('p-indicacion').value = plan ? (plan.indicacion || '') : '';
+      g('p-frecuencia').value = plan ? plan.frecuencia : 'unica';
+      g('p-frec-detalle').value = plan ? (plan.frecuencia_detalle || '') : '';
+      g('p-visitas-total').value = plan && plan.visitas_total ? plan.visitas_total : '';
+      g('p-inicio').value = plan ? (plan.fecha_inicio || '') : '';
+      g('p-cuid-nombre').value = plan ? (plan.cuidador_nombre || '') : '';
+      g('p-cuid-telefono').value = plan ? (plan.cuidador_telefono || '') : '';
+      g('p-cuid-parentesco').value = plan ? (plan.cuidador_parentesco || '') : '';
+      g('p-pag-tipo').value = plan ? plan.pagador_tipo : 'paciente';
+      g('p-pag-nombre').value = plan ? (plan.pagador_nombre || '') : '';
+      g('p-pag-rut').value = plan ? (plan.pagador_rut || '') : '';
+      g('p-pag-telefono').value = plan ? (plan.pagador_telefono || '') : '';
+      g('p-pag-email').value = plan ? (plan.pagador_email || '') : '';
+      g('p-notas').value = plan ? (plan.notas || '') : '';
+      actualizarDomPlan(); actualizarPagador();
+
+      // Visitas del plan (solo al editar)
+      g('p-visitas-box').hidden = !plan;
+      g('p-agendar').hidden = !plan;
+      if (plan) {
+        const propias = visitas.filter(v => v.plan_id === plan.id).sort((a, b) => new Date(b.fecha_hora) - new Date(a.fecha_hora));
+        g('p-visitas-lista').innerHTML = `<p style="font-size:0.85rem;color:var(--color-text-muted);margin-top:0;">Avance: <strong>${esc(progreso(plan))}</strong></p>`
+          + (propias.length ? propias.map(v => {
+            const est = ESTADOS_VISITA[v.estado] || { label: v.estado, badge: 'badge-gray' };
+            return `<div class="bloqueo-item" style="display:flex;justify-content:space-between;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--color-border);">
+              <span>${esc(fmtFechaHora(v.fecha_hora))} · <span class="badge ${est.badge}">${est.label}</span>${v.anulada ? ' <span class="badge badge-red">Anulada</span>' : ''}</span>
+              <button type="button" class="btn-secondary btn-sm" data-ver-visita="${v.id}">Abrir</button></div>`;
+          }).join('') : '<p class="vacio">Este plan aún no tiene visitas.</p>');
+        g('p-visitas-lista').querySelectorAll('[data-ver-visita]').forEach(b => b.addEventListener('click', () => abrirVisita(visitas.find(v => v.id === b.dataset.verVisita))));
+      }
+      g('plan-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function cerrarPlan() { g('plan-card').hidden = true; }
+
+    g('p-paciente').addEventListener('change', () => {
+      const p = pacienteDe(g('p-paciente').value);
+      if (p && p.direccion && !g('p-direccion').value) g('p-direccion').value = p.direccion;
+    });
+    g('p-lugar').addEventListener('change', actualizarDomPlan);
+    g('p-pag-tipo').addEventListener('change', actualizarPagador);
+    g('p-cancelar').addEventListener('click', cerrarPlan);
+    g('p-agendar').addEventListener('click', () => {
+      const plan = planes.find(p => p.id === g('p-id').value);
+      if (plan) abrirVisita(null, { plan });
+    });
+
+    g('plan-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = g('p-error'); err.textContent = '';
+      const procs = ORDEN.filter(t => g('pp-' + t).checked);
+      if (!g('p-paciente').value) { err.textContent = 'Elige el paciente.'; return; }
+      if (!procs.length) { err.textContent = 'Marca al menos un procedimiento.'; return; }
+      const tercero = g('p-pag-tipo').value === 'tercero';
+      const rutPag = g('p-pag-rut').value.trim();
+      if (tercero && !g('p-pag-nombre').value.trim()) { err.textContent = 'Indica el nombre de quien paga.'; return; }
+      if (tercero && rutPag && !rutValido(rutPag)) { err.textContent = 'El RUT de quien paga no es válido: revisa el dígito verificador.'; return; }
+      const dom = g('p-lugar').value === 'domicilio';
+      const val = (id) => g(id).value.trim() || null;
+      const payload = {
+        paciente_id: g('p-paciente').value,
+        procedimientos: procs,
+        lugar: g('p-lugar').value,
+        direccion: dom ? val('p-direccion') : null,
+        referencia_acceso: dom ? val('p-referencia') : null,
+        zona_id: dom ? (g('p-zona').value || null) : null,
+        medico_indica: val('p-medico'),
+        fecha_indicacion: g('p-fecha-ind').value || null,
+        vigencia_hasta: g('p-vigencia').value || null,
+        indicacion: val('p-indicacion'),
+        frecuencia: g('p-frecuencia').value,
+        frecuencia_detalle: val('p-frec-detalle'),
+        visitas_total: g('p-visitas-total').value ? Number(g('p-visitas-total').value) : null,
+        fecha_inicio: g('p-inicio').value || null,
+        cuidador_nombre: val('p-cuid-nombre'),
+        cuidador_telefono: val('p-cuid-telefono'),
+        cuidador_parentesco: val('p-cuid-parentesco'),
+        pagador_tipo: g('p-pag-tipo').value,
+        pagador_nombre: tercero ? val('p-pag-nombre') : null,
+        pagador_rut: tercero ? val('p-pag-rut') : null,
+        pagador_telefono: tercero ? val('p-pag-telefono') : null,
+        pagador_email: tercero ? val('p-pag-email') : null,
+        personal_id: g('p-personal').value || null,
+        estado: g('p-estado').value,
+        notas: val('p-notas'),
+        actualizado_en: new Date().toISOString(),
+      };
+      const btn = g('p-guardar'); btn.disabled = true;
+      try {
+        const id = g('p-id').value;
+        const { error } = id
+          ? await supabaseClient.from('planes_cuidado').update(payload).eq('id', id)
+          : await supabaseClient.from('planes_cuidado').insert(payload);
+        if (error) { err.textContent = 'No se pudo guardar: ' + error.message; return; }
+        await cargarPlanes(); renderPlanes(); renderResumen();
+        cerrarPlan();
+      } finally { btn.disabled = false; }
+    });
+
+    // ─── Formulario de VISITA ───
+    function dibujarCamposProcs() {
+      g('v-campos').innerHTML = ORDEN.map(t => `
+        <div class="proc-campos" id="vc-${t}" hidden>
+          <h4>${esc(PROCS[t].nombre)}
+            <span style="font-weight:400;font-size:0.76rem;color:var(--color-text-muted);">· para dar la visita por realizada: ${esc(REQUERIDOS[t].map(k => etiquetaCampo(t, k)).join(', '))}</span></h4>
+          <div class="form-row">
+            ${PROCS[t].campos.map(c => {
+              const id = `f-${t}-${c.k}`;
+              let el;
+              if (c.t === 'select') el = `<select id="${id}"><option value="">—</option>${c.op.map(o => `<option>${esc(o)}</option>`).join('')}</select>`;
+              else if (c.t === 'textarea') el = `<textarea id="${id}" rows="2"></textarea>`;
+              else el = `<input id="${id}" type="${c.t || 'text'}"${c.t === 'number' ? ' step="any" min="0"' : ''} />`;
+              return `<div class="form-group"${c.t === 'textarea' ? ' style="grid-column:1/-1;"' : ''}><label for="${id}">${esc(c.label)}</label>${el}</div>`;
+            }).join('')}
+          </div>
+        </div>`).join('');
+    }
+    function mostrarCamposProcs() {
+      ORDEN.forEach(t => { g('vc-' + t).hidden = !g('vp-' + t).checked; });
+    }
+    function actualizarDomVisita() {
+      const dom = g('v-lugar').value === 'domicilio';
+      document.querySelectorAll('#visita-form [data-dom-v]').forEach(el => { el.hidden = !dom; });
+    }
+
+    function procsMarcadas() { return ORDEN.filter(t => g('vp-' + t).checked); }
+
+    function recalcularValores(forzar) {
+      const marcadas = procsMarcadas();
+      if (forzar || !valoresEditados.proc) g('v-val-proc').value = marcadas.reduce((s, t) => s + (tarifas[t] || 0), 0);
+      if (forzar || !valoresEditados.tras) {
+        const z = zonas.find(x => x.id === g('v-zona').value);
+        g('v-val-tras').value = (g('v-lugar').value === 'domicilio' && z) ? (Number(z.valor) || 0) : 0;
+      }
+      actualizarTotal();
+    }
+    function actualizarTotal() {
+      g('v-total').textContent = dinero((Number(g('v-val-proc').value) || 0) + (Number(g('v-val-tras').value) || 0));
+    }
+
+    function planesDelPaciente(pacienteId, incluirId) {
+      return planes.filter(p => p.paciente_id === pacienteId && (p.estado === 'activo' || p.id === incluirId));
+    }
+    function poblarPlanesVisita(pacienteId, seleccionado) {
+      const lista = pacienteId ? planesDelPaciente(pacienteId, seleccionado) : [];
+      g('v-plan').innerHTML = '<option value="">Visita suelta (sin plan)</option>' + lista.map(p => {
+        const proc = (p.procedimientos || []).map(t => (PROCS[t] || {}).nombre || t).join(', ');
+        return `<option value="${p.id}">${esc(proc)}${p.fecha_inicio ? ' · desde ' + esc(fmtDia(p.fecha_inicio)) : ''}</option>`;
+      }).join('');
+      g('v-plan').value = seleccionado || '';
+    }
+
+    function actualizarAvisoIndicacion() {
+      const plan = planes.find(p => p.id === g('v-plan').value);
+      const caja = g('v-aviso-indicacion');
+      caja.innerHTML = '';
+      if (!plan) return;
+      const hoy = hoyYmd();
+      const avisos = [];
+      if (plan.vigencia_hasta && plan.vigencia_hasta < hoy) {
+        avisos.push(`<div class="aviso-caja rojo">⚠ La indicación médica de este plan venció el ${esc(fmtDia(plan.vigencia_hasta))}. Confirma con el médico antes de continuar.</div>`);
+      }
+      if (g('vp-medicamentos').checked && !(plan.indicacion || '').trim()) {
+        avisos.push('<div class="aviso-caja ambar">El plan no tiene indicación médica registrada y esta visita incluye administración de medicamentos.</div>');
+      }
+      if ((plan.indicacion || '').trim()) {
+        avisos.push(`<div class="aviso-caja" style="background:var(--color-bg-soft);"><strong>Indicación médica${plan.medico_indica ? ' (' + esc(plan.medico_indica) + ')' : ''}:</strong> ${esc(plan.indicacion)}</div>`);
+      }
+      caja.innerHTML = avisos.join('');
+    }
+
+    // Aplica los datos habituales del plan a una visita nueva
+    function aplicarPlanAVisita(plan) {
+      if (!plan) return;
+      g('v-lugar').value = plan.lugar || 'domicilio';
+      g('v-direccion').value = plan.direccion || '';
+      g('v-zona').value = plan.zona_id || '';
+      g('v-personal').value = plan.personal_id || '';
+      ORDEN.forEach(t => { g('vp-' + t).checked = (plan.procedimientos || []).includes(t); });
+      actualizarDomVisita(); mostrarCamposProcs();
+      valoresEditados = { proc: false, tras: false };
+      recalcularValores(true);
+    }
+
+    function limpiarCamposProcs() {
+      ORDEN.forEach(t => PROCS[t].campos.forEach(c => { g(`f-${t}-${c.k}`).value = ''; }));
+    }
+
+    function abrirVisita(visita, opciones) {
+      opciones = opciones || {};
+      cerrarPlan();
+      g('visita-card').hidden = false;
+      g('v-error').textContent = '';
+      limpiarCamposProcs();
+      ORDEN.forEach(t => { g('vp-' + t).checked = false; });
+      valoresEditados = { proc: false, tras: false };
+
+      if (visita) {
+        g('visita-titulo').textContent = visita.anulada ? 'Visita anulada' : 'Visita';
+        g('v-id').value = visita.id;
+        g('v-paciente').value = visita.paciente_id;
+        poblarPlanesVisita(visita.paciente_id, visita.plan_id || '');
+        g('v-fecha').value = isoToLocalInput(visita.fecha_hora);
+        g('v-lugar').value = visita.lugar;
+        g('v-personal').value = visita.personal_id || '';
+        g('v-estado').value = visita.estado;
+        g('v-direccion').value = visita.direccion || '';
+        g('v-zona').value = visita.zona_id || '';
+        (visita.procedimientos || []).forEach(pr => {
+          const chk = g('vp-' + pr.tipo); if (!chk) return;
+          chk.checked = true;
+          Object.entries(pr.datos || {}).forEach(([k, v]) => { const el = g(`f-${pr.tipo}-${k}`); if (el) el.value = v; });
+        });
+        const s = visita.signos || {};
+        g('v-pa').value = s.pa || ''; g('v-fc').value = s.fc ?? ''; g('v-temp').value = s.temp ?? ''; g('v-sat').value = s.sat ?? '';
+        g('v-obs').value = visita.observaciones || '';
+        g('v-indicaciones').value = visita.indicaciones_cuidador || '';
+        g('v-recibe').value = visita.recibe_nombre || '';
+        g('v-val-proc').value = Number(visita.valor_procedimientos) || 0;
+        g('v-val-tras').value = Number(visita.valor_traslado) || 0;
+        valoresEditados = { proc: true, tras: true };       // se respetan los valores guardados
+        g('v-anular').hidden = !!visita.anulada;
+        g('v-guardar').hidden = !!visita.anulada;
+      } else {
+        const plan = opciones.plan || null;
+        g('visita-titulo').textContent = 'Nueva visita';
+        g('v-id').value = '';
+        g('v-paciente').value = plan ? plan.paciente_id : (opciones.pacienteId || '');
+        poblarPlanesVisita(g('v-paciente').value, plan ? plan.id : '');
+        const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1);
+        g('v-fecha').value = isoToLocalInput(d.toISOString());
+        g('v-lugar').value = 'domicilio'; g('v-personal').value = ''; g('v-estado').value = 'programada';
+        g('v-direccion').value = ''; g('v-zona').value = '';
+        ['v-pa','v-fc','v-temp','v-sat','v-obs','v-indicaciones','v-recibe'].forEach(id => { g(id).value = ''; });
+        if (plan) aplicarPlanAVisita(plan);
+        else {
+          const p = pacienteDe(g('v-paciente').value);
+          if (p && p.direccion) g('v-direccion').value = p.direccion;
+        }
+        g('v-anular').hidden = true;
+        g('v-guardar').hidden = false;
+      }
+      actualizarDomVisita(); mostrarCamposProcs();
+      if (!visita) recalcularValores(true); else actualizarTotal();
+      actualizarAvisoIndicacion();
+      g('visita-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function cerrarVisita() { g('visita-card').hidden = true; }
+
+    // Eventos del formulario de visita
+    g('v-paciente').addEventListener('change', () => {
+      const id = g('v-paciente').value;
+      poblarPlanesVisita(id, '');
+      const p = pacienteDe(id);
+      if (p && p.direccion && !g('v-direccion').value) g('v-direccion').value = p.direccion;
+      actualizarAvisoIndicacion();
+    });
+    g('v-plan').addEventListener('change', () => {
+      if (!g('v-id').value) aplicarPlanAVisita(planes.find(p => p.id === g('v-plan').value));
+      actualizarAvisoIndicacion();
+    });
+    g('v-lugar').addEventListener('change', () => { actualizarDomVisita(); recalcularValores(false); });
+    g('v-zona').addEventListener('change', () => { valoresEditados.tras = false; recalcularValores(false); });
+    g('v-procs').addEventListener('change', () => { mostrarCamposProcs(); recalcularValores(false); actualizarAvisoIndicacion(); });
+    g('v-val-proc').addEventListener('input', () => { valoresEditados.proc = true; actualizarTotal(); });
+    g('v-val-tras').addEventListener('input', () => { valoresEditados.tras = true; actualizarTotal(); });
+    g('v-recalcular').addEventListener('click', () => { valoresEditados = { proc: false, tras: false }; recalcularValores(true); });
+    g('v-cancelar').addEventListener('click', cerrarVisita);
+
+    function leerProcedimientos() {
+      return procsMarcadas().map(t => {
+        const datos = {};
+        PROCS[t].campos.forEach(c => {
+          const v = g(`f-${t}-${c.k}`).value.trim();
+          if (v !== '') datos[c.k] = c.t === 'number' ? Number(v) : v;
+        });
+        return { tipo: t, datos };
+      });
+    }
+
+    g('visita-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = g('v-error'); err.textContent = '';
+      if (!g('v-paciente').value) { err.textContent = 'Elige el paciente.'; return; }
+      if (!g('v-fecha').value) { err.textContent = 'Indica la fecha y la hora.'; return; }
+      const procs = leerProcedimientos();
+      if (!procs.length) { err.textContent = 'Marca al menos un procedimiento.'; return; }
+      const dom = g('v-lugar').value === 'domicilio';
+      if (dom && !g('v-direccion').value.trim()) { err.textContent = 'Indica la dirección de la visita.'; return; }
+      if (g('v-estado').value === 'realizada') {
+        for (const pr of procs) {
+          const faltan = (REQUERIDOS[pr.tipo] || []).filter(k => pr.datos[k] === undefined);
+          if (faltan.length) {
+            err.textContent = `${PROCS[pr.tipo].nombre}: para dar la visita por realizada falta ${faltan.map(k => etiquetaCampo(pr.tipo, k)).join(', ')}.`;
+            return;
+          }
+        }
+      }
+
+      const num = (id) => (g(id).value !== '' ? Number(g(id).value) : null);
+      const signos = { pa: g('v-pa').value.trim() || null, fc: num('v-fc'), temp: num('v-temp'), sat: num('v-sat') };
+      const hayVitales = Object.values(signos).some(v => v !== null);
+      const payload = {
+        paciente_id: g('v-paciente').value,
+        plan_id: g('v-plan').value || null,
+        personal_id: g('v-personal').value || null,
+        fecha_hora: localInputToISO(g('v-fecha').value),
+        lugar: g('v-lugar').value,
+        direccion: dom ? g('v-direccion').value.trim() : null,
+        zona_id: dom ? (g('v-zona').value || null) : null,
+        estado: g('v-estado').value,
+        procedimientos: procs,
+        signos: hayVitales ? signos : null,
+        observaciones: g('v-obs').value.trim() || null,
+        indicaciones_cuidador: g('v-indicaciones').value.trim() || null,
+        recibe_nombre: g('v-recibe').value.trim() || null,
+        valor_procedimientos: Number(g('v-val-proc').value) || 0,
+        valor_traslado: Number(g('v-val-tras').value) || 0,
+        actualizado_en: new Date().toISOString(),
+      };
+      const btn = g('v-guardar'); btn.disabled = true;
+      try {
+        const id = g('v-id').value;
+        const { error } = id
+          ? await supabaseClient.from('visitas_cuidado').update(payload).eq('id', id)
+          : await supabaseClient.from('visitas_cuidado').insert(payload);
+        if (error) { err.textContent = 'No se pudo guardar: ' + error.message; return; }
+        await cargarVisitas(); renderVisitas(); renderPlanes(); renderResumen();
+        cerrarVisita();
+      } finally { btn.disabled = false; }
+    });
+
+    // La ficha clínica no se borra: se anula con un motivo
+    g('v-anular').addEventListener('click', async () => {
+      const id = g('v-id').value;
+      if (!id) return;
+      const motivo = (prompt('La ficha no se borra: queda anulada.\n\nMotivo de la anulación:') || '').trim();
+      if (!motivo) return;
+      const { error } = await supabaseClient.from('visitas_cuidado').update({
+        anulada: true, motivo_anulacion: motivo, anulada_en: new Date().toISOString(),
+      }).eq('id', id);
+      if (error) { alert('No se pudo anular: ' + error.message); return; }
+      await cargarVisitas(); renderVisitas(); renderPlanes(); renderResumen();
+      cerrarVisita();
+    });
+
+    // ─── Pestañas y filtros ───
+    function mostrarVista(v) {
+      ['visitas', 'planes', 'tarifas'].forEach(x => { g('vista-' + x).hidden = x !== v; });
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('activo', b.dataset.vista === v));
+    }
+    document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => mostrarVista(b.dataset.vista)));
+    g('filtros-visitas').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      filtroVisitas = b.dataset.f;
+      g('filtros-visitas').querySelectorAll('button').forEach(x => x.classList.toggle('activo', x === b));
+      renderVisitas();
+    }));
+    g('filtros-planes').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      filtroPlanes = b.dataset.f;
+      g('filtros-planes').querySelectorAll('button').forEach(x => x.classList.toggle('activo', x === b));
+      renderPlanes();
+    }));
+    g('btn-nueva-visita').addEventListener('click', () => abrirVisita(null));
+    g('btn-nuevo-plan').addEventListener('click', () => abrirPlan(null));
+
+    // ─── Inicio ───
+    (async () => {
+      const s = await initLayout('domiciliaria');
+      if (!s) return;
+      dibujarChecksProcs('p-procs', 'pp');
+      dibujarChecksProcs('v-procs', 'vp');
+      dibujarCamposProcs();
+      const ok = await cargarBase();
+      if (!ok) {
+        g('aviso-v14').hidden = false;
+        g('listados').hidden = true;
+        return;
+      }
+      poblarSelectores();
+      await Promise.all([cargarPlanes(), cargarVisitas()]);
+      renderResumen(); renderVisitas(); renderPlanes(); renderTarifas();
+
+      // Si llegan con ?paciente=ID (ej. desde la ficha del paciente), se abre una visita para él
+      const pac = new URLSearchParams(location.search).get('paciente');
+      if (pac) abrirVisita(null, { pacienteId: pac });
+    })();
+  </script>
+</body>
+</html>

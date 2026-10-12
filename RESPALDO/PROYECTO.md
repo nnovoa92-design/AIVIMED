@@ -88,6 +88,15 @@ Uso **operacional interno** (dueñas/equipo). Aparte tiene páginas públicas pa
 
 16. `v13_notificacion_turno.sql` — `notificaciones.turno_id` (FK a turnos, on delete cascade) y trigger de reserva online que lo guarda; permite el botón "Confirmar y enviar mensaje" en la campanita.
 
+17. `v14_atencion_domiciliaria.sql` — `zonas_traslado`, `tarifas_procedimiento`, `planes_cuidado`, `visitas_cuidado` (módulo Atención domiciliaria; ver BITACORA).
+
+### Módulo Atención domiciliaria (2026-10)
+- Pantalla `pages/domiciliaria.html`: Visitas · Planes de cuidado · Tarifas (valor por procedimiento + zonas de traslado según lejanía).
+- Procedimientos: curación, sonda, retiro de puntos, ileostomía, medicamentos, vacunación, cuidados generales (campos clínicos propios, guardados en `visitas_cuidado.procedimientos` jsonb).
+- Plan = indicación médica (médico, fecha, vigencia, texto) + frecuencia + cuidador + pagador (paciente o tercero). Visita puede ser suelta o de un plan, a domicilio o en la clínica.
+- Fichas no se borran: se anulan con motivo. Visita "realizada" exige datos clave por procedimiento.
+- Pendiente: Fase 2 (agenda, cobro, insumos, adjuntar receta) y Fase 3 (informe PDF, alertas).
+
 ### Decisiones del dueño (2026-10)
 - RUT obligatorio en la reserva online: no se atiende a extranjeros sin RUT / no formalizados.
 - Por ahora una sola clínica (AIVIMED): el multi-clínica queda construido pero sin uso; no se priorizan ajustes para más clínicas.
