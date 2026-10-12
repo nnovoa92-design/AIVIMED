@@ -20,14 +20,17 @@
     .chip { background:var(--color-primary-light); color:var(--color-primary-dark); border-radius:999px; padding:0.1rem 0.55rem; font-size:0.72rem; font-weight:600; white-space:nowrap; }
     tr.fila-click { cursor:pointer; }
     tr.anulada td { text-decoration:line-through; opacity:0.55; }
-    .procs-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:0.5rem; margin-bottom:1rem; }
+    .procs-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:0.5rem; margin:0.6rem 0; }
     .proc-check { display:flex; align-items:center; gap:0.5rem; border:1.5px solid var(--color-border); border-radius:var(--radius-sm);
       padding:0.55rem 0.75rem; cursor:pointer; background:var(--color-surface); font-size:0.9rem; font-weight:600;
       text-transform:none; letter-spacing:0; color:var(--color-text); margin:0; }
     .proc-check input { width:auto; margin:0; accent-color:var(--color-primary); }
     .proc-check:has(input:checked) { border-color:var(--color-primary); background:var(--color-primary-light); }
+    .desplegable { border:1.5px solid var(--color-border); border-radius:var(--radius-sm); background:var(--color-surface); padding:0 0.85rem; margin-bottom:1rem; }
+    .desplegable > summary { cursor:pointer; padding:0.65rem 0; font-weight:600; font-size:0.92rem; color:var(--color-text); }
+    .desplegable[open] > summary { border-bottom:1px solid var(--color-border); margin-bottom:0.5rem; }
     .proc-campos { border:1px solid var(--color-border); border-left:3px solid var(--color-primary); border-radius:var(--radius-sm);
-      background:var(--color-bg-soft); padding:0.85rem 1rem 0.35rem; margin-bottom:1rem; }
+      background:var(--color-bg-soft); padding:0.85rem 1rem 0.5rem; margin-bottom:1rem; }
     .proc-campos h4 { margin:0 0 0.6rem; font-size:0.95rem; color:var(--color-primary-dark); }
     .seccion-titulo { font-size:0.95rem; color:var(--color-primary-dark); margin:1.25rem 0 0.5rem; }
     .aviso-caja { border-radius:var(--radius-sm); padding:0.6rem 0.85rem; font-size:0.85rem; margin-bottom:0.85rem; }
@@ -43,8 +46,19 @@
     .guia { background:var(--color-bg-soft); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:0.7rem 1rem; margin-bottom:1rem; }
     .guia summary { cursor:pointer; font-weight:700; color:var(--color-primary-dark); }
     .guia ol { margin:0.6rem 0 0.2rem; padding-left:1.2rem; font-size:0.88rem; line-height:1.55; }
-    .zona-fila { display:grid; grid-template-columns:2fr 1fr auto auto; gap:0.5rem; align-items:center; margin-bottom:0.5rem; }
-    @media (max-width:640px) { .zona-fila { grid-template-columns:1fr 1fr; } }
+    .bloque-plan { border:1px solid var(--color-border); border-left:3px solid var(--color-accent); border-radius:var(--radius-sm);
+      background:var(--color-bg-soft); padding:0.85rem 1rem 0.35rem; margin-bottom:1rem; }
+    .fotos-bloque { border-top:1px dashed var(--color-border); margin-top:0.5rem; padding-top:0.7rem; }
+    .fotos-controles { display:grid; grid-template-columns:minmax(150px, 1fr) 2fr; gap:0.5rem; align-items:center; margin-bottom:0.5rem; }
+    .fotos-lista { display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.5rem; }
+    .foto-item { width:104px; text-align:center; font-size:0.72rem; position:relative; }
+    .foto-item img { width:104px; height:104px; object-fit:cover; border-radius:var(--radius-sm); border:1px solid var(--color-border); display:block; }
+    .foto-item .quitar { position:absolute; top:3px; right:3px; background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:50%;
+      width:22px; height:22px; padding:0; font-size:0.7rem; line-height:1; box-shadow:none; justify-content:center; }
+    .zona-fila { display:grid; grid-template-columns:2fr 0.8fr 1fr auto auto; gap:0.5rem; align-items:center; margin-bottom:0.5rem; }
+    .zona-fila.encabezado { font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--color-text-muted); margin-bottom:0.25rem; }
+    .tarjeta-tipo { border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:0.7rem 0.9rem; margin-bottom:0.5rem; display:flex; justify-content:space-between; gap:0.75rem; align-items:flex-start; flex-wrap:wrap; }
+    @media (max-width:640px) { .zona-fila { grid-template-columns:1fr 1fr; } .fotos-controles { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -60,6 +74,12 @@
             Hay que correr la actualización <code>v14_atencion_domiciliaria.sql</code> en Supabase. Cuando esté lista, recarga esta página.
           </p>
         </div>
+        <div class="card" id="aviso-v15" hidden style="border-left:4px solid var(--color-warning);">
+          <strong>Falta una actualización para usar comunas con km, tipos de plan, procedimientos propios y fotos.</strong>
+          <p style="margin:0.4rem 0 0;color:var(--color-text-muted);font-size:0.88rem;">
+            Hay que correr <code>v15_planes_comunas_fotos.sql</code> en Supabase y recargar. Mientras tanto el resto funciona.
+          </p>
+        </div>
 
         <div class="cards-grid" id="resumen"></div>
 
@@ -68,7 +88,7 @@
           <h2 id="plan-titulo" style="margin-top:0;">Nuevo plan de cuidado</h2>
           <p class="ayuda" style="margin-top:-0.25rem;margin-bottom:1rem;">
             Un <strong>plan de cuidado</strong> agrupa <strong>varias visitas de un mismo paciente</strong> (por ejemplo, una curación diaria por 10 días).
-            Guarda la indicación médica, la frecuencia y quién paga, para no repetirlo en cada visita.
+            Guarda en qué consiste, cuántas sesiones son, la indicación médica y quién paga, para no repetirlo en cada visita.
           </p>
           <form id="plan-form" novalidate>
             <input type="hidden" id="p-id" />
@@ -82,19 +102,43 @@
               </div>
             </div>
 
+            <h3 class="seccion-titulo">Qué plan es y en qué consiste</h3>
+            <div class="form-row">
+              <div class="form-group"><label for="p-tipo">Tipo de plan *</label>
+                <select id="p-tipo"><option value="">Elegir tipo de plan…</option></select>
+                <input id="p-tipo-otro" placeholder="Nombre del nuevo tipo de plan" style="margin-top:0.4rem;" hidden />
+                <span class="ayuda">Si no está en la lista, elige “Otro” y escríbelo: queda guardado para la próxima.</span>
+              </div>
+              <div class="form-group"><label for="p-visitas-total">Cantidad de sesiones</label><input type="number" id="p-visitas-total" min="1" placeholder="Ej: 10" /></div>
+              <div class="form-group"><label for="p-frecuencia">Frecuencia</label>
+                <select id="p-frecuencia">
+                  <option value="unica">Visita única</option><option value="diaria">Diaria</option>
+                  <option value="dia_por_medio">Día por medio</option><option value="semanal">Semanal</option><option value="otra">Otra</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group"><label for="p-descripcion">En qué consiste</label>
+              <textarea id="p-descripcion" rows="2" placeholder="Ej: Curación diaria de herida en pierna derecha, con control de signos de infección."></textarea>
+            </div>
+            <div class="form-group"><label for="p-frec-detalle">Detalle de la frecuencia</label><input id="p-frec-detalle" placeholder="Ej: lunes, miércoles y viernes" /></div>
+
             <h3 class="seccion-titulo">Procedimientos del plan</h3>
-            <div class="procs-grid" id="p-procs"></div>
+            <details class="desplegable" id="p-procs-det">
+              <summary id="p-procs-resumen">Elegir procedimientos…</summary>
+              <div class="procs-grid" id="p-procs"></div>
+              <button type="button" class="enlace-mini" data-nuevo-procedimiento="pp" style="margin:0 0 0.6rem;">＋ Agregar un procedimiento que no está en la lista</button>
+            </details>
 
             <h3 class="seccion-titulo">Dónde se atiende</h3>
             <div class="form-row">
               <div class="form-group"><label for="p-lugar">Lugar habitual</label>
                 <select id="p-lugar"><option value="domicilio">A domicilio</option><option value="clinica">En la clínica</option></select>
               </div>
-              <div class="form-group" data-dom><label for="p-zona">Zona de traslado</label><select id="p-zona"><option value="">Sin traslado</option></select></div>
             </div>
             <div class="form-row" data-dom>
-              <div class="form-group"><label for="p-direccion">Dirección de la visita</label><input id="p-direccion" placeholder="Calle, número, comuna" /></div>
-              <div class="form-group"><label for="p-referencia">Referencias de acceso</label><input id="p-referencia" placeholder="Depto, portón, timbre, piso…" /></div>
+              <div class="form-group"><label for="p-zona">Comuna / zona de traslado</label><select id="p-zona"><option value="">Sin traslado</option></select></div>
+              <div class="form-group"><label for="p-direccion">Dirección (calle, número, depto)</label><input id="p-direccion" placeholder="Calle, número, depto" /></div>
+              <div class="form-group"><label for="p-referencia">Referencias de acceso</label><input id="p-referencia" placeholder="Portón, timbre, piso…" /></div>
             </div>
 
             <h3 class="seccion-titulo">Indicación médica</h3>
@@ -106,17 +150,7 @@
             <div class="form-group"><label for="p-indicacion">Indicación / diagnóstico</label>
               <textarea id="p-indicacion" rows="3" placeholder="Qué indicó el médico: procedimiento, medicamento y dosis, frecuencia, duración…"></textarea>
             </div>
-
-            <h3 class="seccion-titulo">Frecuencia</h3>
             <div class="form-row">
-              <div class="form-group"><label for="p-frecuencia">Frecuencia</label>
-                <select id="p-frecuencia">
-                  <option value="unica">Visita única</option><option value="diaria">Diaria</option>
-                  <option value="dia_por_medio">Día por medio</option><option value="semanal">Semanal</option><option value="otra">Otra</option>
-                </select>
-              </div>
-              <div class="form-group"><label for="p-frec-detalle">Detalle de la frecuencia</label><input id="p-frec-detalle" placeholder="Ej: lunes, miércoles y viernes" /></div>
-              <div class="form-group"><label for="p-visitas-total">Total de visitas</label><input type="number" id="p-visitas-total" min="1" /></div>
               <div class="form-group"><label for="p-inicio">Fecha de inicio</label><input type="date" id="p-inicio" /></div>
             </div>
 
@@ -167,9 +201,13 @@
                 <select id="v-lugar"><option value="domicilio">A domicilio</option><option value="clinica">En la clínica</option></select>
               </div>
             </div>
+
             <div class="form-row">
-              <div class="form-group"><label for="v-plan">¿Parte de un plan de cuidado? (opcional)</label>
-                <select id="v-plan"><option value="">No: es una visita suelta</option></select>
+              <div class="form-group"><label for="v-req-plan">¿Requiere plan de cuidado?</label>
+                <select id="v-req-plan">
+                  <option value="no">No, solo una visita</option>
+                  <option value="si">Sí, requiere plan</option>
+                </select>
                 <span class="ayuda" id="v-plan-ayuda"></span>
               </div>
               <div class="form-group"><label for="v-personal">Profesional <button type="button" class="enlace-mini" data-nuevo-profesional="v-personal">＋ Agregar profesional</button></label>
@@ -180,15 +218,58 @@
                 <select id="v-estado"><option value="programada">Programada</option><option value="realizada">Realizada</option><option value="cancelada">Cancelada</option></select>
               </div>
             </div>
+
+            <!-- Solo si requiere plan -->
+            <div class="bloque-plan" id="v-plan-bloque" hidden>
+              <div class="form-row">
+                <div class="form-group"><label for="v-plan">Plan</label>
+                  <select id="v-plan"><option value="">Elegir plan…</option></select>
+                </div>
+              </div>
+              <div id="v-plan-nuevo" hidden>
+                <p class="ayuda" style="margin-top:0;">Plan nuevo para este paciente. Los procedimientos de la visita pasan al plan.</p>
+                <div class="form-row">
+                  <div class="form-group"><label for="vn-tipo">Tipo de plan *</label>
+                    <select id="vn-tipo"><option value="">Elegir tipo de plan…</option></select>
+                    <input id="vn-tipo-otro" placeholder="Nombre del nuevo tipo de plan" style="margin-top:0.4rem;" hidden />
+                    <span class="ayuda">Si no está en la lista, elige “Otro” y escríbelo: queda guardado para la próxima.</span>
+                  </div>
+                  <div class="form-group"><label for="vn-sesiones">Cantidad de sesiones *</label><input type="number" id="vn-sesiones" min="1" placeholder="Ej: 10" /></div>
+                  <div class="form-group"><label for="vn-frecuencia">Frecuencia</label>
+                    <select id="vn-frecuencia">
+                      <option value="unica">Visita única</option><option value="diaria">Diaria</option>
+                      <option value="dia_por_medio">Día por medio</option><option value="semanal">Semanal</option><option value="otra" selected>Otra</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group"><label for="vn-descripcion">En qué consiste</label>
+                  <textarea id="vn-descripcion" rows="2" placeholder="Ej: Curación diaria de herida en pierna derecha."></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dónde: comuna con km y dirección al costado -->
             <div class="form-row" data-dom-v>
-              <div class="form-group"><label for="v-direccion">Dirección de la visita</label><input id="v-direccion" placeholder="Calle, número, comuna" /></div>
-              <div class="form-group"><label for="v-zona">Zona de traslado</label><select id="v-zona"><option value="">Sin traslado</option></select></div>
+              <div class="form-group"><label for="v-zona">Comuna / zona de traslado</label>
+                <select id="v-zona"><option value="">Sin traslado</option></select>
+                <span class="ayuda" id="v-zona-ayuda"></span>
+              </div>
+              <div class="form-group"><label for="v-direccion">Dirección (calle, número, depto)</label>
+                <input id="v-direccion" placeholder="Calle, número, depto" />
+                <label style="display:flex;align-items:center;gap:0.4rem;margin:0.4rem 0 0;text-transform:none;letter-spacing:0;font-weight:500;font-size:0.8rem;">
+                  <input type="checkbox" id="v-guardar-dir" style="width:auto;" /> Guardar esta dirección en la ficha del paciente
+                </label>
+              </div>
             </div>
 
             <div id="v-aviso-indicacion"></div>
 
             <h3 class="seccion-titulo">Procedimientos de esta visita *</h3>
-            <div class="procs-grid" id="v-procs"></div>
+            <details class="desplegable" id="v-procs-det" open>
+              <summary id="v-procs-resumen">Elegir procedimientos…</summary>
+              <div class="procs-grid" id="v-procs"></div>
+              <button type="button" class="enlace-mini" data-nuevo-procedimiento="vp" style="margin:0 0 0.6rem;">＋ Agregar un procedimiento que no está en la lista</button>
+            </details>
             <div id="v-campos"></div>
 
             <h3 class="seccion-titulo">Signos vitales</h3>
@@ -227,17 +308,17 @@
           <details class="guia" id="guia">
             <summary>¿Cómo funciona este módulo?</summary>
             <ol>
-              <li><strong>Tarifas:</strong> en la pestaña “Tarifas” carga cuánto cobras por cada procedimiento y las zonas de traslado según la lejanía.</li>
+              <li><strong>Catálogo y tarifas:</strong> carga cuánto cobras por cada procedimiento y el traslado de cada comuna (cada una muestra sus km).</li>
               <li><strong>Plan de cuidado</strong> (opcional): úsalo cuando un paciente necesita <em>varias visitas</em>, por ejemplo una curación diaria por 10 días.
-                Guarda la indicación médica, la frecuencia y quién paga. Si es una sola atención, no necesitas plan.</li>
-              <li><strong>Visita:</strong> cada atención, a domicilio o en la clínica. Ahí registras lo que hiciste y se calcula el valor
-                (procedimiento + traslado). Puede ser una visita suelta o parte de un plan.</li>
+                Dice en qué consiste, cuántas sesiones son y guarda la indicación médica y quién paga. Si es una sola atención, elige “No, solo una visita”.</li>
+              <li><strong>Visita:</strong> cada atención, a domicilio o en la clínica. Ahí registras lo que hiciste, sacas las fotos
+                (por ejemplo el lote de la vacuna) y se calcula el valor.</li>
             </ol>
           </details>
           <div class="tabs">
             <button type="button" data-vista="visitas" class="activo">Visitas</button>
             <button type="button" data-vista="planes">Planes de cuidado</button>
-            <button type="button" data-vista="tarifas">Tarifas</button>
+            <button type="button" data-vista="catalogo">Catálogo y tarifas</button>
           </div>
 
           <div id="vista-visitas">
@@ -264,24 +345,58 @@
             <div class="tabla-scroll" id="lista-planes"></div>
           </div>
 
-          <div id="vista-tarifas" hidden>
+          <div id="vista-catalogo" hidden>
             <h3 class="seccion-titulo" style="margin-top:0;">Valor de cada procedimiento</h3>
-            <p style="color:var(--color-text-muted);font-size:0.85rem;margin-top:0;">
-              El valor de una visita es la suma de sus procedimientos más el traslado según la zona. Puedes ajustarlo en cada visita.
+            <p class="ayuda" style="margin-top:0;">
+              El valor de una visita es la suma de sus procedimientos más el traslado de la comuna. Puedes ajustarlo en cada visita.
             </p>
             <div id="tarifas-proc"></div>
             <button type="button" id="guardar-tarifas">Guardar valores</button>
+            <button type="button" id="nuevo-proc-cat" class="btn-secondary" data-nuevo-procedimiento="cat">＋ Agregar procedimiento</button>
             <span id="tarifas-ok" style="color:var(--color-success);font-size:0.85rem;margin-left:0.5rem;"></span>
 
-            <h3 class="seccion-titulo">Zonas de traslado (según la lejanía)</h3>
-            <p style="color:var(--color-text-muted);font-size:0.85rem;margin-top:0;">
-              Crea las zonas que atiendes y cuánto cobras de traslado en cada una. Ej: “Hasta 5 km”, “Entre 5 y 15 km”, “Sector rural”.
+            <h3 class="seccion-titulo">Tipos de plan</h3>
+            <p class="ayuda" style="margin-top:0;">
+              Son las opciones que aparecen al elegir “Sí, requiere plan”. Cada una dice en qué consiste y cuántas sesiones suele tener.
+            </p>
+            <div id="tipos-lista"></div>
+            <div class="card" style="background:var(--color-bg-soft);box-shadow:none;margin-top:0.75rem;">
+              <h4 style="margin:0 0 0.6rem;" id="tp-titulo">Nuevo tipo de plan</h4>
+              <form id="tp-form" novalidate>
+                <input type="hidden" id="tp-id" />
+                <div class="form-row">
+                  <div class="form-group"><label for="tp-nombre">Nombre *</label><input id="tp-nombre" placeholder="Ej: Curaciones diarias" /></div>
+                  <div class="form-group"><label for="tp-sesiones">Sesiones habituales</label><input type="number" id="tp-sesiones" min="1" /></div>
+                  <div class="form-group"><label for="tp-frecuencia">Frecuencia</label>
+                    <select id="tp-frecuencia">
+                      <option value="otra">Otra</option><option value="unica">Visita única</option><option value="diaria">Diaria</option>
+                      <option value="dia_por_medio">Día por medio</option><option value="semanal">Semanal</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group"><label for="tp-descripcion">En qué consiste</label><textarea id="tp-descripcion" rows="2"></textarea></div>
+                <details class="desplegable" id="tp-procs-det">
+                  <summary id="tp-procs-resumen">Procedimientos que incluye…</summary>
+                  <div class="procs-grid" id="tp-procs"></div>
+                </details>
+                <button type="submit" id="tp-guardar">Guardar tipo de plan</button>
+                <button type="button" id="tp-cancelar" class="btn-secondary" hidden>Cancelar edición</button>
+                <p class="error-message" id="tp-error"></p>
+              </form>
+            </div>
+
+            <h3 class="seccion-titulo">Comunas y zonas de traslado</h3>
+            <p class="ayuda" style="margin-top:0;">
+              Provincia de Concepción, con la distancia aproximada por carretera desde el centro de Concepción.
+              <strong>Los km son referenciales:</strong> corrígelos con la ruta real desde la dirección de la clínica. Define cuánto cobras de traslado en cada comuna.
+              Si atiendes un lugar que no está, agrégalo abajo con sus km.
             </p>
             <div id="zonas-lista"></div>
             <form id="zona-form" class="zona-fila" style="margin-top:0.75rem;" novalidate>
-              <input id="zona-nombre" placeholder="Nombre de la zona" />
+              <input id="zona-nombre" placeholder="Comuna o lugar nuevo" />
+              <input type="number" id="zona-km" placeholder="Km" min="0" step="0.5" />
               <input type="number" id="zona-valor" placeholder="Valor $" min="0" step="1" />
-              <button type="submit">Agregar zona</button>
+              <button type="submit">Agregar lugar</button>
             </form>
             <p class="error-message" id="zona-error"></p>
           </div>
@@ -335,12 +450,29 @@
     </div>
   </div>
 
+  <!-- Procedimiento nuevo (que no está en la lista) -->
+  <div class="modal-fondo" id="pc-modal" hidden>
+    <div class="modal-caja">
+      <h2 style="margin-top:0;">Agregar procedimiento</h2>
+      <p class="ayuda" style="margin-top:-0.25rem;">Queda disponible para todas las visitas y planes. Registra un detalle libre y permite adjuntar fotos.</p>
+      <form id="pc-form" novalidate>
+        <div class="form-group"><label for="pc-nombre">Nombre del procedimiento *</label><input id="pc-nombre" placeholder="Ej: Control de glicemia" autocomplete="off" /></div>
+        <div class="form-group"><label for="pc-valor">Valor ($)</label><input type="number" id="pc-valor" min="0" step="1" placeholder="0" /></div>
+        <div class="modal-acciones">
+          <button type="submit" id="pc-guardar">Guardar procedimiento</button>
+          <button type="button" id="pc-cancelar" class="btn-secondary">Cancelar</button>
+        </div>
+        <p class="error-message" id="pc-error"></p>
+      </form>
+    </div>
+  </div>
+
   <script src="../assets/vendor/supabase.min.js"></script>
   <script src="../assets/js/supabaseClient.js"></script>
   <script src="../assets/js/formatos.js"></script>
   <script src="../assets/js/layout.js"></script>
   <script>
-    // ─── Procedimientos y los datos que se registran en cada uno ───
+    // ─── Procedimientos base y los datos que se registran en cada uno ───
     const PROCS = {
       curacion: { nombre: 'Curación', campos: [
         { k:'zona', label:'Zona / ubicación' },
@@ -406,18 +538,40 @@
       curacion: ['zona'], sonda: ['accion'], retiro_puntos: ['zona'], ileostomia: ['accion'],
       medicamentos: ['farmaco', 'dosis', 'via'], vacunacion: ['vacuna', 'lote', 'dosis'], cuidados_generales: ['actividades'],
     };
-    const etiquetaCampo = (t, k) => ((PROCS[t].campos.find(c => c.k === k)) || { label: k }).label;
+    // Sugerencias de qué muestra cada foto (se puede escribir otra)
+    const ETIQUETAS_FOTO = {
+      vacunacion: ['Lote', 'Vacuna', 'Frasco', 'Zona de aplicación'],
+      curacion: ['Antes', 'Después', 'Herida'],
+      sonda: ['Sonda', 'Bolsa recolectora'],
+      retiro_puntos: ['Antes', 'Después'],
+      ileostomia: ['Estoma', 'Bolsa / placa'],
+      medicamentos: ['Medicamento', 'Receta'],
+      cuidados_generales: ['Foto'],
+    };
+    const CAMPOS_EXTRA = [{ k:'detalle', label:'Detalle del procedimiento', t:'textarea' }];
     const FRECUENCIAS = { unica:'Visita única', diaria:'Diaria', dia_por_medio:'Día por medio', semanal:'Semanal', otra:'Otra' };
     const ESTADOS_VISITA = {
       programada: { label:'Programada', badge:'badge-blue' },
       realizada:  { label:'Realizada',  badge:'badge-green' },
       cancelada:  { label:'Cancelada',  badge:'badge-gray' },
     };
+    const PREFIJOS_PROCS = { pp: 'p-procs', vp: 'v-procs', tp: 'tp-procs' };
+    const MAPA_TIPO = {
+      vn: { sesiones:'vn-sesiones', frecuencia:'vn-frecuencia', descripcion:'vn-descripcion', otro:'vn-tipo-otro', procs:'vp' },
+      p:  { sesiones:'p-visitas-total', frecuencia:'p-frecuencia', descripcion:'p-descripcion', otro:'p-tipo-otro', procs:'pp' },
+    };
 
     // ─── Estado ───
-    let pacientes = [], personal = [], zonas = [], tarifas = {}, planes = [], visitas = [];
+    let pacientes = [], personal = [], zonas = [], tarifas = {}, planes = [], visitas = [], tiposPlan = [], extras = [];
+    let v15 = true;                     // false si aún no se aplicó la actualización v15
     let filtroVisitas = 'proximas', filtroPlanes = 'activo';
     let valoresEditados = { proc:false, tras:false };
+    let nombreEquipo = 'Equipo de la clínica';
+    let planVolverAVisita = false;      // al guardar un plan creado desde una visita, se vuelve a ella
+    let destinoPaciente = null, destinoProfesional = null, destinoProc = null;
+    let visitaIdActual = null;          // id de la visita en edición (si es nueva, se genera antes de subir fotos)
+    let fotos = {};                     // { codigoProcedimiento: [{ path, etiqueta }] }
+    let fotosNuevas = new Set();        // fotos subidas en esta edición (solo estas se pueden quitar)
     const g = (id) => document.getElementById(id);
     const esc = htmlSeguro;
 
@@ -431,15 +585,30 @@
     const fmtDia = (s) => s ? new Date(s + 'T00:00:00').toLocaleDateString('es-CL', { day:'numeric', month:'short', year:'numeric' }) : '';
     const hoyYmd = () => ymd(new Date());
     const pacienteDe = (id) => pacientes.find(p => p.id === id);
-    const chips = (arr) => `<div class="chips">${(arr || []).map(t => `<span class="chip">${esc((PROCS[t] || {}).nombre || t)}</span>`).join('')}</div>`;
+    const nombreProc = (t) => (PROCS[t] || {}).nombre || t;
+    const chips = (arr) => `<div class="chips">${(arr || []).map(t => `<span class="chip">${esc(nombreProc(t))}</span>`).join('')}</div>`;
+    const etiquetaCampo = (t, k) => ((PROCS[t].campos.find(c => c.k === k)) || { label: k }).label;
+    const nuevoUuid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
+    const etiquetaZona = (z) => `${z.nombre}${z.km !== null && z.km !== undefined && z.km !== '' ? ' · ' + Number(z.km) + ' km' : ''} · traslado ${dinero(z.valor)}`;
+
+    // Procedimientos propios de la clínica: se suman a los 7 base
+    function registrarExtra(row) {
+      if (PROCS[row.codigo]) return;
+      PROCS[row.codigo] = { nombre: row.nombre, extra: true, campos: CAMPOS_EXTRA };
+      REQUERIDOS[row.codigo] = [];
+      ORDEN.push(row.codigo);
+    }
 
     // ─── Datos ───
     async function cargarBase() {
-      const [p, pe, z, t] = await Promise.all([
+      const [p, pe, z, t, tp, ex] = await Promise.all([
         supabaseClient.from('pacientes').select('id,nombre,apellido,dni,telefono,direccion').eq('activo', true).order('apellido'),
         supabaseClient.from('personal').select('id,nombre,apellido').eq('activo', true).order('apellido'),
         supabaseClient.from('zonas_traslado').select('*').order('orden').order('nombre'),
         supabaseClient.from('tarifas_procedimiento').select('*'),
+        supabaseClient.from('tipos_plan').select('*').eq('activo', true).order('orden').order('nombre'),
+        supabaseClient.from('procedimientos_extra').select('*').eq('activo', true).order('nombre'),
       ]);
       pacientes = p.data || [];
       personal = pe.data || [];
@@ -447,6 +616,10 @@
       zonas = z.data || [];
       tarifas = {};
       (t.data || []).forEach(r => { tarifas[r.codigo] = Number(r.valor) || 0; });
+      v15 = !(tp.error || ex.error);                        // falta v15: se sigue con lo básico
+      tiposPlan = v15 ? (tp.data || []) : [];
+      extras = v15 ? (ex.data || []) : [];
+      extras.forEach(registrarExtra);
       return true;
     }
     async function cargarPlanes() {
@@ -494,10 +667,15 @@
           const est = ESTADOS_VISITA[v.estado] || { label: v.estado, badge: 'badge-gray' };
           const tipos = (v.procedimientos || []).map(x => x.tipo);
           const total = (Number(v.valor_procedimientos) || 0) + (Number(v.valor_traslado) || 0);
+          const plan = planes.find(p => p.id === v.plan_id);
+          const zona = zonas.find(z => z.id === v.zona_id);
           return `<tr class="fila-click${v.anulada ? ' anulada' : ''}" data-id="${v.id}">
             <td>${esc(fmtVisitaFecha(v.fecha_hora))}</td>
-            <td><strong>${esc(nombrePac(pacienteDe(v.paciente_id)) || '—')}</strong>${v.plan_id ? '' : '<div style="font-size:0.72rem;color:var(--color-text-muted);">Visita suelta</div>'}</td>
-            <td>${v.lugar === 'domicilio' ? '🏠 ' + esc(v.direccion || 'Domicilio') : '🏥 Clínica'}</td>
+            <td><strong>${esc(nombrePac(pacienteDe(v.paciente_id)) || '—')}</strong>
+              <div style="font-size:0.72rem;color:var(--color-text-muted);">${plan ? 'Plan: ' + esc(plan.nombre || 'de cuidado') : 'Visita suelta'}</div></td>
+            <td>${v.lugar === 'domicilio'
+              ? '🏠 ' + esc(v.direccion || 'Domicilio') + (zona ? `<div style="font-size:0.72rem;color:var(--color-text-muted);">${esc(zona.nombre)}${zona.km != null ? ' · ' + Number(zona.km) + ' km' : ''}</div>` : '')
+              : '🏥 Clínica'}</td>
             <td>${chips(tipos)}</td>
             <td><span class="badge ${est.badge}">${est.label}</span>${v.anulada ? ' <span class="badge badge-red">Anulada</span>' : ''}</td>
             <td>${dinero(total)}</td></tr>`;
@@ -508,22 +686,23 @@
     // ─── Lista de planes ───
     function progreso(plan) {
       const hechas = visitas.filter(v => v.plan_id === plan.id && v.estado === 'realizada' && !v.anulada).length;
-      return plan.visitas_total ? `${hechas} de ${plan.visitas_total}` : `${hechas} realizadas`;
+      return plan.visitas_total ? `${hechas} de ${plan.visitas_total} sesiones` : `${hechas} realizadas`;
     }
     function renderPlanes() {
       const lista = planes.filter(p => filtroPlanes === 'todos' || p.estado === 'activo');
       if (!lista.length) { g('lista-planes').innerHTML = '<p class="vacio">No hay planes en esta vista.</p>'; return; }
       const hoy = hoyYmd();
-      g('lista-planes').innerHTML = `<table><thead><tr><th>Paciente</th><th>Procedimientos</th><th>Frecuencia</th><th>Avance</th><th>Indicación</th><th>Estado</th><th></th></tr></thead><tbody>
+      g('lista-planes').innerHTML = `<table><thead><tr><th>Paciente</th><th>Plan</th><th>Avance</th><th>Frecuencia</th><th>Indicación</th><th>Estado</th><th></th></tr></thead><tbody>
         ${lista.map(p => {
           const vencida = p.vigencia_hasta && p.vigencia_hasta < hoy;
           const estBadge = p.estado === 'activo' ? 'badge-green' : (p.estado === 'suspendido' ? 'badge-yellow' : 'badge-gray');
           return `<tr data-id="${p.id}">
             <td><strong>${esc(nombrePac(pacienteDe(p.paciente_id)) || '—')}</strong>
               ${p.pagador_tipo === 'tercero' ? `<div style="font-size:0.72rem;color:var(--color-text-muted);">Paga: ${esc(p.pagador_nombre || 'tercero')}</div>` : ''}</td>
-            <td>${chips(p.procedimientos)}</td>
-            <td>${esc(FRECUENCIAS[p.frecuencia] || p.frecuencia)}${p.frecuencia_detalle ? `<div style="font-size:0.72rem;color:var(--color-text-muted);">${esc(p.frecuencia_detalle)}</div>` : ''}</td>
+            <td><strong>${esc(p.nombre || 'Plan de cuidado')}</strong>${p.descripcion ? `<div style="font-size:0.74rem;color:var(--color-text-muted);">${esc(p.descripcion)}</div>` : ''}
+              ${chips(p.procedimientos)}</td>
             <td>${esc(progreso(p))}</td>
+            <td>${esc(FRECUENCIAS[p.frecuencia] || p.frecuencia)}${p.frecuencia_detalle ? `<div style="font-size:0.72rem;color:var(--color-text-muted);">${esc(p.frecuencia_detalle)}</div>` : ''}</td>
             <td>${p.vigencia_hasta ? (vencida ? '<span class="badge badge-red">Vencida</span> ' : 'Hasta ') + esc(fmtDia(p.vigencia_hasta)) : '<span style="color:var(--color-text-muted);">Sin fecha</span>'}</td>
             <td><span class="badge ${estBadge}">${esc(p.estado)}</span></td>
             <td><div class="acciones-fila">
@@ -534,47 +713,112 @@
       g('lista-planes').querySelectorAll('[data-agendar]').forEach(b => b.addEventListener('click', () => abrirVisita(null, { plan: planes.find(p => p.id === b.dataset.agendar) })));
     }
 
-    // ─── Tarifas y zonas ───
+    // ─── Catálogo: tarifas, tipos de plan y zonas ───
     function renderTarifas() {
       g('tarifas-proc').innerHTML = `<div class="form-row">${ORDEN.map(t => `
-        <div class="form-group"><label for="tar-${t}">${esc(PROCS[t].nombre)} ($)</label>
+        <div class="form-group"><label for="tar-${t}">${esc(nombreProc(t))} ($)</label>
           <input type="number" id="tar-${t}" min="0" step="1" value="${tarifas[t] ?? 0}" /></div>`).join('')}</div>`;
+      renderTipos();
       renderZonas();
     }
+    function renderTipos() {
+      if (!tiposPlan.length) { g('tipos-lista').innerHTML = '<p class="vacio">Aún no hay tipos de plan. Crea el primero abajo.</p>'; return; }
+      g('tipos-lista').innerHTML = tiposPlan.map(t => `
+        <div class="tarjeta-tipo">
+          <div><strong>${esc(t.nombre)}</strong>
+            <div style="font-size:0.8rem;color:var(--color-text-muted);">${esc(t.descripcion || 'Sin descripción')}</div>
+            <div style="font-size:0.76rem;margin-top:0.2rem;">${t.sesiones ? esc(t.sesiones + ' sesiones') + ' · ' : ''}${esc(FRECUENCIAS[t.frecuencia] || t.frecuencia)}</div>
+            ${chips(t.procedimientos)}</div>
+          <div class="acciones-fila">
+            <button type="button" class="btn-secondary btn-sm" data-editar-tipo="${t.id}">Editar</button>
+            <button type="button" class="btn-secondary btn-sm" data-quitar-tipo="${t.id}">Quitar</button></div>
+        </div>`).join('');
+      g('tipos-lista').querySelectorAll('[data-editar-tipo]').forEach(b => b.addEventListener('click', () => editarTipo(b.dataset.editarTipo)));
+      g('tipos-lista').querySelectorAll('[data-quitar-tipo]').forEach(b => b.addEventListener('click', async () => {
+        if (!confirm('¿Quitar este tipo de plan de la lista? Los planes ya creados no cambian.')) return;
+        const { error } = await supabaseClient.from('tipos_plan').update({ activo: false }).eq('id', b.dataset.quitarTipo);
+        if (error) { alert('No se pudo quitar: ' + error.message); return; }
+        await cargarBase(); poblarTiposPlan(); renderTipos();
+      }));
+    }
+    function editarTipo(id) {
+      const t = tiposPlan.find(x => x.id === id);
+      if (!t) return;
+      g('tp-titulo').textContent = 'Editar tipo de plan';
+      g('tp-id').value = t.id; g('tp-nombre').value = t.nombre; g('tp-descripcion').value = t.descripcion || '';
+      g('tp-sesiones').value = t.sesiones || ''; g('tp-frecuencia').value = t.frecuencia || 'otra';
+      ORDEN.forEach(c => { g('tp-' + c).checked = (t.procedimientos || []).includes(c); });
+      actualizarResumenProcs('tp');
+      g('tp-cancelar').hidden = false;
+      g('tp-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    function limpiarFormTipo() {
+      g('tp-titulo').textContent = 'Nuevo tipo de plan';
+      ['tp-id', 'tp-nombre', 'tp-descripcion', 'tp-sesiones'].forEach(id => { g(id).value = ''; });
+      g('tp-frecuencia').value = 'otra';
+      ORDEN.forEach(c => { g('tp-' + c).checked = false; });
+      actualizarResumenProcs('tp');
+      g('tp-cancelar').hidden = true; g('tp-error').textContent = '';
+    }
+    g('tp-cancelar').addEventListener('click', limpiarFormTipo);
+    g('tp-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = g('tp-error'); err.textContent = '';
+      if (!v15) { err.textContent = 'Falta aplicar la actualización v15 en la base de datos.'; return; }
+      const nombre = g('tp-nombre').value.trim();
+      if (!nombre) { err.textContent = 'Escribe el nombre del tipo de plan.'; return; }
+      const payload = {
+        nombre, descripcion: g('tp-descripcion').value.trim() || null,
+        procedimientos: ORDEN.filter(c => g('tp-' + c).checked),
+        sesiones: g('tp-sesiones').value ? Number(g('tp-sesiones').value) : null,
+        frecuencia: g('tp-frecuencia').value,
+      };
+      const id = g('tp-id').value;
+      const { error } = id
+        ? await supabaseClient.from('tipos_plan').update(payload).eq('id', id)
+        : await supabaseClient.from('tipos_plan').insert(Object.assign({ orden: tiposPlan.length + 1 }, payload));
+      if (error) { err.textContent = 'No se pudo guardar: ' + error.message; return; }
+      await cargarBase(); poblarTiposPlan(); renderTipos(); limpiarFormTipo();
+    });
+
     function renderZonas() {
-      if (!zonas.length) { g('zonas-lista').innerHTML = '<p class="vacio">Aún no hay zonas. Agrega la primera abajo.</p>'; return; }
-      g('zonas-lista').innerHTML = zonas.map(z => `
+      if (!zonas.length) { g('zonas-lista').innerHTML = '<p class="vacio">Aún no hay comunas ni lugares. Agrega el primero abajo.</p>'; return; }
+      g('zonas-lista').innerHTML = `<div class="zona-fila encabezado"><span>Comuna o lugar</span><span>Km</span><span>Traslado ($)</span><span>Activa</span><span></span></div>`
+        + zonas.map(z => `
         <div class="zona-fila" data-id="${z.id}">
-          <input value="${esc(z.nombre)}" data-campo="nombre" aria-label="Nombre de la zona" />
+          <input value="${esc(z.nombre)}" data-campo="nombre" aria-label="Nombre" />
+          <input type="number" min="0" step="0.5" value="${z.km ?? ''}" data-campo="km" aria-label="Kilómetros" placeholder="km" />
           <input type="number" min="0" step="1" value="${Number(z.valor) || 0}" data-campo="valor" aria-label="Valor" />
           <label style="display:flex;align-items:center;gap:0.35rem;margin:0;text-transform:none;letter-spacing:0;">
-            <input type="checkbox" data-campo="activo" ${z.activo ? 'checked' : ''} style="width:auto;" /> Activa</label>
+            <input type="checkbox" data-campo="activo" ${z.activo ? 'checked' : ''} style="width:auto;" /></label>
           <button type="button" class="btn-secondary btn-sm" data-guardar-zona="${z.id}">Guardar</button>
         </div>`).join('');
       g('zonas-lista').querySelectorAll('[data-guardar-zona]').forEach(b => b.addEventListener('click', async () => {
         const fila = b.closest('.zona-fila');
+        const km = fila.querySelector('[data-campo="km"]').value;
         const payload = {
           nombre: fila.querySelector('[data-campo="nombre"]').value.trim(),
           valor: Number(fila.querySelector('[data-campo="valor"]').value) || 0,
           activo: fila.querySelector('[data-campo="activo"]').checked,
         };
+        if (v15) payload.km = km === '' ? null : Number(km);
         if (!payload.nombre) { alert('La zona necesita un nombre.'); return; }
         const { error } = await supabaseClient.from('zonas_traslado').update(payload).eq('id', b.dataset.guardarZona);
         if (error) { alert('No se pudo guardar: ' + error.message); return; }
-        await cargarBase(); renderTarifas(); poblarZonas();
+        await cargarBase(); renderZonas(); poblarZonas();
       }));
     }
     g('zona-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const err = g('zona-error'); err.textContent = '';
       const nombre = g('zona-nombre').value.trim();
-      if (!nombre) { err.textContent = 'Escribe el nombre de la zona.'; return; }
-      const { error } = await supabaseClient.from('zonas_traslado').insert({
-        nombre, valor: Number(g('zona-valor').value) || 0, orden: zonas.length + 1,
-      });
+      if (!nombre) { err.textContent = 'Escribe el nombre de la comuna o lugar.'; return; }
+      const payload = { nombre, valor: Number(g('zona-valor').value) || 0, orden: zonas.length + 1 };
+      if (v15 && g('zona-km').value !== '') payload.km = Number(g('zona-km').value);
+      const { error } = await supabaseClient.from('zonas_traslado').insert(payload);
       if (error) { err.textContent = 'No se pudo agregar: ' + error.message; return; }
-      g('zona-nombre').value = ''; g('zona-valor').value = '';
-      await cargarBase(); renderTarifas(); poblarZonas();
+      g('zona-nombre').value = ''; g('zona-km').value = ''; g('zona-valor').value = '';
+      await cargarBase(); renderZonas(); poblarZonas();
     });
     g('guardar-tarifas').addEventListener('click', async () => {
       const org = await orgEfectiva();
@@ -588,9 +832,6 @@
     });
 
     // ─── Selectores ───
-    let nombreEquipo = 'Equipo de la clínica';
-    let planVolverAVisita = false;      // al guardar un plan creado desde una visita, se vuelve a ella
-
     function poblarSelectores() {
       const previos = ['p-paciente', 'v-paciente', 'p-personal', 'v-personal'].map(id => [id, g(id).value]);
       const opPac = '<option value="">Seleccionar…</option>' + pacientes.map(p => `<option value="${p.id}">${esc(p.apellido + ', ' + p.nombre)}${p.dni ? ' · ' + esc(p.dni) : ''}</option>`).join('');
@@ -599,20 +840,41 @@
       g('p-personal').innerHTML = opPer; g('v-personal').innerHTML = opPer;
       previos.forEach(([id, v]) => { if (v) g(id).value = v; });     // conserva lo que ya estaba elegido
       poblarZonas();
+      poblarTiposPlan();
       g('v-personal-ayuda').textContent = personal.length
         ? ''
         : 'Aún no hay profesionales cargados: agrégalos con “＋ Agregar profesional” o en el menú Personal. Mientras tanto la visita queda a nombre del equipo.';
     }
+    function poblarZonas() {
+      const op = '<option value="">Sin traslado</option>' + zonas.filter(z => z.activo).map(z => `<option value="${z.id}">${esc(etiquetaZona(z))}</option>`).join('');
+      const pz = g('p-zona').value, vz = g('v-zona').value;
+      g('p-zona').innerHTML = op; g('v-zona').innerHTML = op;
+      g('p-zona').value = pz; g('v-zona').value = vz;
+    }
+    function poblarTiposPlan() {
+      const op = '<option value="">Elegir tipo de plan…</option>'
+        + tiposPlan.map(t => `<option value="${t.id}">${esc(t.nombre)}</option>`).join('')
+        + '<option value="__otro">＋ Otro (escribir el nombre)…</option>';
+      ['vn-tipo', 'p-tipo'].forEach(id => { const v = g(id).value; g(id).innerHTML = op; if (v) g(id).value = v; });
+    }
+    function dibujarChecksProcs(contenedor, prefijo) {
+      g(contenedor).innerHTML = ORDEN.map(t => `
+        <label class="proc-check"><input type="checkbox" id="${prefijo}-${t}" value="${t}" /> ${esc(nombreProc(t))}</label>`).join('');
+    }
+    // "Curación, Sonda" en el encabezado del desplegable
+    function actualizarResumenProcs(pref) {
+      const marcadas = ORDEN.filter(t => g(`${pref}-${t}`) && g(`${pref}-${t}`).checked);
+      const base = pref === 'tp' ? 'Procedimientos que incluye…' : 'Elegir procedimientos…';
+      g(`${pref === 'pp' ? 'p' : pref === 'vp' ? 'v' : 'tp'}-procs-resumen`).textContent =
+        marcadas.length ? marcadas.map(nombreProc).join(', ') + ' ▾' : base;
+    }
 
     // ─── Paciente nuevo y profesional nuevo (sin salir de la pantalla) ───
-    let destinoPaciente = null, destinoProfesional = null;
-
     function usarEnSelect(selectId, valor) {
       const sel = g(selectId);
       sel.value = valor;
       sel.dispatchEvent(new Event('change'));
     }
-
     function abrirNuevoPaciente(selectId) {
       destinoPaciente = selectId;
       ['np-nombre', 'np-apellido', 'np-rut', 'np-telefono', 'np-direccion', 'np-email'].forEach(id => { g(id).value = ''; });
@@ -689,25 +951,128 @@
       } finally { btn.disabled = false; }
     });
 
-    // Enlaces "＋ Paciente nuevo", "＋ Agregar profesional" y "Crear un plan para este paciente"
-    document.addEventListener('click', (e) => {
-      const np = e.target.closest('[data-nuevo-paciente]');
-      if (np) { abrirNuevoPaciente(np.dataset.nuevoPaciente); return; }
-      const pr = e.target.closest('[data-nuevo-profesional]');
-      if (pr) { abrirNuevoProfesional(pr.dataset.nuevoProfesional); return; }
-      if (e.target.closest('[data-crear-plan]')) {
-        abrirPlan(null, { pacienteId: g('v-paciente').value, volverAVisita: true });
-      }
-    });
-    function poblarZonas() {
-      const op = '<option value="">Sin traslado</option>' + zonas.filter(z => z.activo).map(z => `<option value="${z.id}">${esc(z.nombre)} · ${dinero(z.valor)}</option>`).join('');
-      const pz = g('p-zona').value, vz = g('v-zona').value;
-      g('p-zona').innerHTML = op; g('v-zona').innerHTML = op;
-      g('p-zona').value = pz; g('v-zona').value = vz;
+    // ─── Procedimiento nuevo (que no está en la lista) ───
+    function abrirNuevoProcedimiento(destino) {
+      destinoProc = destino;
+      g('pc-nombre').value = ''; g('pc-valor').value = ''; g('pc-error').textContent = '';
+      g('pc-modal').hidden = false;
+      g('pc-nombre').focus();
     }
-    function dibujarChecksProcs(contenedor, prefijo) {
-      g(contenedor).innerHTML = ORDEN.map(t => `
-        <label class="proc-check"><input type="checkbox" id="${prefijo}-${t}" value="${t}" /> ${esc(PROCS[t].nombre)}</label>`).join('');
+    g('pc-cancelar').addEventListener('click', () => { g('pc-modal').hidden = true; });
+    g('pc-modal').addEventListener('click', (e) => { if (e.target.id === 'pc-modal') g('pc-modal').hidden = true; });
+    g('pc-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = g('pc-error'); err.textContent = '';
+      if (!v15) { err.textContent = 'Falta aplicar la actualización v15 en la base de datos.'; return; }
+      const nombre = g('pc-nombre').value.trim();
+      if (!nombre) { err.textContent = 'Escribe el nombre del procedimiento.'; return; }
+      const existente = ORDEN.find(c => nombreProc(c).toLowerCase() === nombre.toLowerCase());
+      if (existente) { err.textContent = 'Ese procedimiento ya está en la lista.'; return; }
+      const codigo = 'x' + Math.random().toString(36).slice(2, 8);
+      const valor = Number(g('pc-valor').value) || 0;
+      const org = await orgEfectiva();
+      const btn = g('pc-guardar'); btn.disabled = true;
+      try {
+        const { error } = await supabaseClient.from('procedimientos_extra').insert({ codigo, nombre });
+        if (error) { err.textContent = 'No se pudo guardar: ' + error.message; return; }
+        if (org) {
+          await supabaseClient.from('tarifas_procedimiento').upsert(
+            [{ organizacion_id: org, codigo, valor, actualizado_en: new Date().toISOString() }], { onConflict: 'organizacion_id,codigo' });
+        }
+        tarifas[codigo] = valor;
+        registrarExtra({ codigo, nombre });
+        redibujarProcedimientos();
+        g('pc-modal').hidden = true;
+        // Queda marcado en el formulario desde el que se agregó
+        const pref = destinoProc;
+        if (pref && pref !== 'cat') {
+          g(`${pref}-${codigo}`).checked = true;
+          g(PREFIJOS_PROCS[pref]).dispatchEvent(new Event('change'));
+        }
+      } finally { btn.disabled = false; }
+    });
+
+    // Vuelve a dibujar listas y campos de procedimientos conservando lo ya marcado y escrito
+    function redibujarProcedimientos() {
+      const marcadas = {};
+      Object.keys(PREFIJOS_PROCS).forEach(pref => { marcadas[pref] = ORDEN.filter(t => g(`${pref}-${t}`) && g(`${pref}-${t}`).checked); });
+      const valores = {};
+      document.querySelectorAll('#v-campos [id^="f-"]').forEach(el => { valores[el.id] = el.value; });
+      Object.entries(PREFIJOS_PROCS).forEach(([pref, cont]) => dibujarChecksProcs(cont, pref));
+      dibujarCamposProcs();
+      Object.keys(marcadas).forEach(pref => marcadas[pref].forEach(t => { g(`${pref}-${t}`).checked = true; }));
+      Object.entries(valores).forEach(([id, v]) => { const el = g(id); if (el) el.value = v; });
+      ['pp', 'vp', 'tp'].forEach(actualizarResumenProcs);
+      mostrarCamposProcs();
+      ORDEN.forEach(t => { pintarFotos(t); });
+      renderTarifas();
+    }
+
+    // ─── Fotos de los procedimientos (almacenamiento privado) ───
+    function reducirImagen(file, maximo) {
+      maximo = maximo || 1600;
+      return new Promise((resolve) => {
+        const lector = new FileReader();
+        lector.onerror = () => resolve(file);
+        lector.onload = () => {
+          const img = new Image();
+          img.onerror = () => resolve(file);
+          img.onload = () => {
+            const escala = Math.min(1, maximo / Math.max(img.width, img.height));
+            const c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(img.width * escala));
+            c.height = Math.max(1, Math.round(img.height * escala));
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            c.toBlob((b) => resolve(b || file), 'image/jpeg', 0.82);
+          };
+          img.src = lector.result;
+        };
+        lector.readAsDataURL(file);
+      });
+    }
+
+    async function subirFotos(tipo, archivos) {
+      const aviso = g('fe-' + tipo);
+      aviso.textContent = '';
+      if (!v15) { aviso.textContent = 'Falta aplicar la actualización v15 para guardar fotos.'; return; }
+      const org = await orgEfectiva();
+      if (!org) { aviso.textContent = 'No se pudo determinar la clínica activa.'; return; }
+      let etiqueta = g('etq-' + tipo).value;
+      if (etiqueta === '__otra') etiqueta = (prompt('¿Qué muestra la foto? (ej. Lote del frasco)') || '').trim() || 'Foto';
+      let subidas = 0;
+      for (const archivo of archivos) {
+        if (!/^image\//.test(archivo.type || '')) { aviso.textContent = 'Solo se pueden adjuntar imágenes.'; continue; }
+        aviso.textContent = 'Subiendo foto…';
+        const blob = await reducirImagen(archivo);
+        const path = `${org}/${visitaIdActual}/${tipo}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+        const { error } = await supabaseClient.storage.from('cuidados').upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+        if (error) { aviso.textContent = 'No se pudo subir la foto: ' + error.message; continue; }
+        (fotos[tipo] = fotos[tipo] || []).push({ path, etiqueta });
+        fotosNuevas.add(path);
+        subidas++;
+      }
+      if (subidas) aviso.textContent = `✓ ${subidas === 1 ? 'Foto guardada' : subidas + ' fotos guardadas'}.`;
+      await pintarFotos(tipo);
+    }
+
+    async function pintarFotos(tipo) {
+      const cont = g('fl-' + tipo);
+      if (!cont) return;
+      const lista = fotos[tipo] || [];
+      if (!lista.length) { cont.innerHTML = ''; return; }
+      let urls = {};
+      try {
+        const { data } = await supabaseClient.storage.from('cuidados').createSignedUrls(lista.map(f => f.path), 3600);
+        (data || []).forEach(x => { if (x && x.signedUrl) urls[x.path] = x.signedUrl; });
+      } catch (e) { /* sin vista previa */ }
+      cont.innerHTML = lista.map((f, i) => `
+        <figure class="foto-item" style="margin:0;">
+          ${urls[f.path]
+            ? `<a href="${esc(urls[f.path])}" target="_blank" rel="noopener"><img src="${esc(urls[f.path])}" alt="${esc(f.etiqueta)}" /></a>`
+            : '<div style="width:104px;height:104px;background:var(--color-bg-soft);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;">🖼</div>'}
+          <figcaption>${esc(f.etiqueta)}</figcaption>
+          ${fotosNuevas.has(f.path) ? `<button type="button" class="quitar" data-quitar-foto="${i}" data-tipo="${esc(tipo)}" title="Quitar esta foto">✕</button>` : ''}
+        </figure>`).join('');
     }
 
     // ─── Formulario de PLAN ───
@@ -716,6 +1081,45 @@
       document.querySelectorAll('#plan-form [data-dom]').forEach(el => { el.hidden = !dom; });
     }
     function actualizarPagador() { g('p-pag-datos').hidden = g('p-pag-tipo').value !== 'tercero'; }
+
+    // Al elegir un tipo de plan se proponen su descripción, sesiones, frecuencia y procedimientos
+    function alElegirTipo(pref) {
+      const m = MAPA_TIPO[pref];
+      const v = g(pref + '-tipo').value;
+      g(m.otro).hidden = v !== '__otro';
+      if (!v || v === '__otro') return;
+      const t = tiposPlan.find(x => x.id === v);
+      if (!t) return;
+      if (t.descripcion && !g(m.descripcion).value.trim()) g(m.descripcion).value = t.descripcion;
+      if (t.sesiones) g(m.sesiones).value = t.sesiones;
+      g(m.frecuencia).value = t.frecuencia || 'otra';
+      const hayMarcadas = ORDEN.some(c => g(`${m.procs}-${c}`).checked);
+      if (!hayMarcadas) {
+        (t.procedimientos || []).forEach(c => { const chk = g(`${m.procs}-${c}`); if (chk) chk.checked = true; });
+        g(PREFIJOS_PROCS[m.procs]).dispatchEvent(new Event('change'));
+      }
+    }
+    g('p-tipo').addEventListener('change', () => alElegirTipo('p'));
+    g('vn-tipo').addEventListener('change', () => alElegirTipo('vn'));
+
+    // Resuelve el tipo elegido; si se escribió uno nuevo, lo agrega al catálogo para la próxima vez
+    async function resolverTipoPlan(pref, descripcion, sesiones, frecuencia, procs) {
+      const v = g(pref + '-tipo').value;
+      if (!v) return { error: 'Elige el tipo de plan.' };
+      if (v === '__otro') {
+        const nombre = g(MAPA_TIPO[pref].otro).value.trim();
+        if (!nombre) return { error: 'Escribe el nombre del tipo de plan.' };
+        const { data, error } = await supabaseClient.from('tipos_plan').insert({
+          nombre, descripcion, procedimientos: procs, sesiones, frecuencia, orden: tiposPlan.length + 1,
+        }).select('*').single();
+        if (error) return { error: 'No se pudo guardar el tipo de plan: ' + error.message };
+        tiposPlan.push(data);
+        poblarTiposPlan();
+        return { id: data.id, nombre };
+      }
+      const t = tiposPlan.find(x => x.id === v);
+      return { id: v, nombre: t ? t.nombre : null };
+    }
 
     function abrirPlan(plan, opciones) {
       opciones = opciones || {};
@@ -728,7 +1132,11 @@
       g('p-paciente').value = plan ? plan.paciente_id : '';
       g('p-personal').value = plan ? (plan.personal_id || '') : '';
       g('p-estado').value = plan ? plan.estado : 'activo';
+      g('p-tipo').value = plan && plan.tipo_plan_id ? plan.tipo_plan_id : '';
+      g('p-tipo-otro').value = ''; g('p-tipo-otro').hidden = true;
+      g('p-descripcion').value = plan ? (plan.descripcion || '') : '';
       ORDEN.forEach(t => { g('pp-' + t).checked = !!(plan && (plan.procedimientos || []).includes(t)); });
+      actualizarResumenProcs('pp');
       g('p-lugar').value = plan ? plan.lugar : 'domicilio';
       g('p-zona').value = plan ? (plan.zona_id || '') : '';
       g('p-direccion').value = plan ? (plan.direccion || '') : '';
@@ -761,10 +1169,10 @@
       g('p-agendar').hidden = !plan;
       if (plan) {
         const propias = visitas.filter(v => v.plan_id === plan.id).sort((a, b) => new Date(b.fecha_hora) - new Date(a.fecha_hora));
-        g('p-visitas-lista').innerHTML = `<p style="font-size:0.85rem;color:var(--color-text-muted);margin-top:0;">Avance: <strong>${esc(progreso(plan))}</strong></p>`
+        g('p-visitas-lista').innerHTML = `<p class="ayuda" style="margin-top:0;">Avance: <strong>${esc(progreso(plan))}</strong></p>`
           + (propias.length ? propias.map(v => {
             const est = ESTADOS_VISITA[v.estado] || { label: v.estado, badge: 'badge-gray' };
-            return `<div class="bloqueo-item" style="display:flex;justify-content:space-between;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--color-border);">
+            return `<div style="display:flex;justify-content:space-between;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--color-border);">
               <span>${esc(fmtVisitaFecha(v.fecha_hora))} · <span class="badge ${est.badge}">${est.label}</span>${v.anulada ? ' <span class="badge badge-red">Anulada</span>' : ''}</span>
               <button type="button" class="btn-secondary btn-sm" data-ver-visita="${v.id}">Abrir</button></div>`;
           }).join('') : '<p class="vacio">Este plan aún no tiene visitas.</p>');
@@ -780,6 +1188,8 @@
     });
     g('p-lugar').addEventListener('change', actualizarDomPlan);
     g('p-pag-tipo').addEventListener('change', actualizarPagador);
+    g('p-procs').addEventListener('change', () => actualizarResumenProcs('pp'));
+    g('tp-procs').addEventListener('change', () => actualizarResumenProcs('tp'));
     g('p-cancelar').addEventListener('click', cerrarPlan);
     g('p-agendar').addEventListener('click', () => {
       const plan = planes.find(p => p.id === g('p-id').value);
@@ -798,36 +1208,42 @@
       if (tercero && rutPag && !rutValido(rutPag)) { err.textContent = 'El RUT de quien paga no es válido: revisa el dígito verificador.'; return; }
       const dom = g('p-lugar').value === 'domicilio';
       const val = (id) => g(id).value.trim() || null;
-      const payload = {
-        paciente_id: g('p-paciente').value,
-        procedimientos: procs,
-        lugar: g('p-lugar').value,
-        direccion: dom ? val('p-direccion') : null,
-        referencia_acceso: dom ? val('p-referencia') : null,
-        zona_id: dom ? (g('p-zona').value || null) : null,
-        medico_indica: val('p-medico'),
-        fecha_indicacion: g('p-fecha-ind').value || null,
-        vigencia_hasta: g('p-vigencia').value || null,
-        indicacion: val('p-indicacion'),
-        frecuencia: g('p-frecuencia').value,
-        frecuencia_detalle: val('p-frec-detalle'),
-        visitas_total: g('p-visitas-total').value ? Number(g('p-visitas-total').value) : null,
-        fecha_inicio: g('p-inicio').value || null,
-        cuidador_nombre: val('p-cuid-nombre'),
-        cuidador_telefono: val('p-cuid-telefono'),
-        cuidador_parentesco: val('p-cuid-parentesco'),
-        pagador_tipo: g('p-pag-tipo').value,
-        pagador_nombre: tercero ? val('p-pag-nombre') : null,
-        pagador_rut: tercero ? val('p-pag-rut') : null,
-        pagador_telefono: tercero ? val('p-pag-telefono') : null,
-        pagador_email: tercero ? val('p-pag-email') : null,
-        personal_id: g('p-personal').value || null,
-        estado: g('p-estado').value,
-        notas: val('p-notas'),
-        actualizado_en: new Date().toISOString(),
-      };
+      const sesiones = g('p-visitas-total').value ? Number(g('p-visitas-total').value) : null;
       const btn = g('p-guardar'); btn.disabled = true;
       try {
+        const payload = {
+          paciente_id: g('p-paciente').value,
+          procedimientos: procs,
+          lugar: g('p-lugar').value,
+          direccion: dom ? val('p-direccion') : null,
+          referencia_acceso: dom ? val('p-referencia') : null,
+          zona_id: dom ? (g('p-zona').value || null) : null,
+          medico_indica: val('p-medico'),
+          fecha_indicacion: g('p-fecha-ind').value || null,
+          vigencia_hasta: g('p-vigencia').value || null,
+          indicacion: val('p-indicacion'),
+          frecuencia: g('p-frecuencia').value,
+          frecuencia_detalle: val('p-frec-detalle'),
+          visitas_total: sesiones,
+          fecha_inicio: g('p-inicio').value || null,
+          cuidador_nombre: val('p-cuid-nombre'),
+          cuidador_telefono: val('p-cuid-telefono'),
+          cuidador_parentesco: val('p-cuid-parentesco'),
+          pagador_tipo: g('p-pag-tipo').value,
+          pagador_nombre: tercero ? val('p-pag-nombre') : null,
+          pagador_rut: tercero ? val('p-pag-rut') : null,
+          pagador_telefono: tercero ? val('p-pag-telefono') : null,
+          pagador_email: tercero ? val('p-pag-email') : null,
+          personal_id: g('p-personal').value || null,
+          estado: g('p-estado').value,
+          notas: val('p-notas'),
+          actualizado_en: new Date().toISOString(),
+        };
+        if (v15) {
+          const tipo = await resolverTipoPlan('p', val('p-descripcion'), sesiones, g('p-frecuencia').value, procs);
+          if (tipo.error) { err.textContent = tipo.error; return; }
+          payload.tipo_plan_id = tipo.id; payload.nombre = tipo.nombre; payload.descripcion = val('p-descripcion');
+        }
         const id = g('p-id').value;
         let planId = id, error = null;
         if (id) {
@@ -852,8 +1268,10 @@
     function dibujarCamposProcs() {
       g('v-campos').innerHTML = ORDEN.map(t => `
         <div class="proc-campos" id="vc-${t}" hidden>
-          <h4>${esc(PROCS[t].nombre)}
-            <span style="font-weight:400;font-size:0.76rem;color:var(--color-text-muted);">· para dar la visita por realizada: ${esc(REQUERIDOS[t].map(k => etiquetaCampo(t, k)).join(', '))}</span></h4>
+          <h4>${esc(nombreProc(t))}
+            <span style="font-weight:400;font-size:0.76rem;color:var(--color-text-muted);">${(REQUERIDOS[t] || []).length
+              ? '· para dar la visita por realizada: ' + esc(REQUERIDOS[t].map(k => etiquetaCampo(t, k)).join(', ')) : ''}</span>
+            <button type="button" class="enlace-mini" data-quitar-proc="${t}">Quitar de esta visita</button></h4>
           <div class="form-row">
             ${PROCS[t].campos.map(c => {
               const id = `f-${t}-${c.k}`;
@@ -864,10 +1282,22 @@
               return `<div class="form-group"${c.t === 'textarea' ? ' style="grid-column:1/-1;"' : ''}><label for="${id}">${esc(c.label)}</label>${el}</div>`;
             }).join('')}
           </div>
+          <div class="fotos-bloque">
+            <label>Fotos del procedimiento</label>
+            <div class="fotos-controles">
+              <select id="etq-${t}" aria-label="Qué muestra la foto">
+                ${(ETIQUETAS_FOTO[t] || ['Foto']).map(e => `<option>${esc(e)}</option>`).join('')}
+                <option value="__otra">Otra…</option>
+              </select>
+              <input type="file" accept="image/*" multiple data-foto="${t}" aria-label="Agregar fotos" />
+            </div>
+            <div class="fotos-lista" id="fl-${t}"></div>
+            <span class="ayuda" id="fe-${t}"></span>
+          </div>
         </div>`).join('');
     }
     function mostrarCamposProcs() {
-      ORDEN.forEach(t => { g('vc-' + t).hidden = !g('vp-' + t).checked; });
+      ORDEN.forEach(t => { const bloque = g('vc-' + t); if (bloque) bloque.hidden = !g('vp-' + t).checked; });
     }
     function actualizarDomVisita() {
       const dom = g('v-lugar').value === 'domicilio';
@@ -888,35 +1318,39 @@
     function actualizarTotal() {
       g('v-total').textContent = dinero((Number(g('v-val-proc').value) || 0) + (Number(g('v-val-tras').value) || 0));
     }
+    function actualizarAyudaZona() {
+      const z = zonas.find(x => x.id === g('v-zona').value);
+      g('v-zona-ayuda').textContent = z
+        ? `${z.km !== null && z.km !== undefined && z.km !== '' ? 'A ' + Number(z.km) + ' km de la clínica (aprox.). ' : ''}Traslado: ${dinero(z.valor)}.`
+        : '';
+    }
 
     function planesDelPaciente(pacienteId, incluirId) {
       return planes.filter(p => p.paciente_id === pacienteId && (p.estado === 'activo' || p.id === incluirId));
     }
+    // "¿Requiere plan?": si es que sí, ofrece los planes del paciente o crear uno nuevo
     function poblarPlanesVisita(pacienteId, seleccionado) {
       const lista = pacienteId ? planesDelPaciente(pacienteId, seleccionado) : [];
-      g('v-plan').innerHTML = '<option value="">No: es una visita suelta</option>' + lista.map(p => {
-        const proc = (p.procedimientos || []).map(t => (PROCS[t] || {}).nombre || t).join(', ');
-        return `<option value="${p.id}">Plan: ${esc(proc)}${p.fecha_inicio ? ' · desde ' + esc(fmtDia(p.fecha_inicio)) : ''}</option>`;
-      }).join('');
+      g('v-plan').innerHTML = '<option value="">Elegir plan…</option>'
+        + lista.map(p => `<option value="${p.id}">${esc(p.nombre || 'Plan de cuidado')} · ${esc(progreso(p))}</option>`).join('')
+        + '<option value="__nuevo">＋ Plan nuevo para este paciente…</option>';
       g('v-plan').value = seleccionado || '';
-      actualizarAyudaPlan(lista.length > 0, !!pacienteId);
+      actualizarBloquePlan();
     }
-
-    // Explica qué es un plan y, si el paciente no tiene, ofrece crearlo en el momento
-    function actualizarAyudaPlan(hayPlanes, hayPaciente) {
-      const generico = 'Un plan agrupa varias visitas de un mismo paciente (ej.: una curación diaria por 10 días) y guarda la indicación médica y quién paga. Para una sola atención déjalo como visita suelta.';
-      const caja = g('v-plan-ayuda');
-      if (!hayPaciente) { caja.textContent = generico; return; }
-      caja.innerHTML = hayPlanes
-        ? 'Elige el plan al que pertenece esta visita, o déjala como visita suelta.'
-        : 'Este paciente aún no tiene planes. ' + esc(generico) + ' <button type="button" class="enlace-mini" data-crear-plan>Crear un plan para este paciente</button>';
+    function actualizarBloquePlan() {
+      const si = g('v-req-plan').value === 'si';
+      g('v-plan-bloque').hidden = !si;
+      g('v-plan-nuevo').hidden = !(si && g('v-plan').value === '__nuevo');
+      g('v-plan-ayuda').textContent = si
+        ? 'Elige el plan del paciente o crea uno nuevo: dice en qué consiste y cuántas sesiones son.'
+        : 'Marca “Sí” si el paciente necesita varias visitas (ej.: curación diaria por 10 días).';
     }
 
     function actualizarAvisoIndicacion() {
       const plan = planes.find(p => p.id === g('v-plan').value);
       const caja = g('v-aviso-indicacion');
       caja.innerHTML = '';
-      if (!plan) return;
+      if (!plan || g('v-req-plan').value !== 'si') return;
       const hoy = hoyYmd();
       const avisos = [];
       if (plan.vigencia_hasta && plan.vigencia_hasta < hoy) {
@@ -939,13 +1373,13 @@
       g('v-zona').value = plan.zona_id || '';
       g('v-personal').value = plan.personal_id || '';
       ORDEN.forEach(t => { g('vp-' + t).checked = (plan.procedimientos || []).includes(t); });
-      actualizarDomVisita(); mostrarCamposProcs();
+      actualizarDomVisita(); mostrarCamposProcs(); actualizarResumenProcs('vp'); actualizarAyudaZona();
       valoresEditados = { proc: false, tras: false };
       recalcularValores(true);
     }
 
     function limpiarCamposProcs() {
-      ORDEN.forEach(t => PROCS[t].campos.forEach(c => { g(`f-${t}-${c.k}`).value = ''; }));
+      ORDEN.forEach(t => PROCS[t].campos.forEach(c => { const el = g(`f-${t}-${c.k}`); if (el) el.value = ''; }));
     }
 
     function abrirVisita(visita, opciones) {
@@ -956,11 +1390,17 @@
       limpiarCamposProcs();
       ORDEN.forEach(t => { g('vp-' + t).checked = false; });
       valoresEditados = { proc: false, tras: false };
+      fotos = {}; fotosNuevas = new Set();
+      g('vn-tipo').value = ''; g('vn-tipo-otro').value = ''; g('vn-tipo-otro').hidden = true;
+      g('vn-sesiones').value = ''; g('vn-descripcion').value = ''; g('vn-frecuencia').value = 'otra';
+      g('v-guardar-dir').checked = false;
 
       if (visita) {
+        visitaIdActual = visita.id;
         g('visita-titulo').textContent = visita.anulada ? 'Visita anulada' : 'Visita';
         g('v-id').value = visita.id;
         g('v-paciente').value = visita.paciente_id;
+        g('v-req-plan').value = visita.plan_id ? 'si' : 'no';
         poblarPlanesVisita(visita.paciente_id, visita.plan_id || '');
         g('v-fecha').value = isoToLocalInput(visita.fecha_hora);
         g('v-lugar').value = visita.lugar;
@@ -972,6 +1412,7 @@
           const chk = g('vp-' + pr.tipo); if (!chk) return;
           chk.checked = true;
           Object.entries(pr.datos || {}).forEach(([k, v]) => { const el = g(`f-${pr.tipo}-${k}`); if (el) el.value = v; });
+          fotos[pr.tipo] = (pr.fotos || []).slice();
         });
         const s = visita.signos || {};
         g('v-pa').value = s.pa || ''; g('v-fc').value = s.fc ?? ''; g('v-temp').value = s.temp ?? ''; g('v-sat').value = s.sat ?? '';
@@ -984,10 +1425,12 @@
         g('v-anular').hidden = !!visita.anulada;
         g('v-guardar').hidden = !!visita.anulada;
       } else {
+        visitaIdActual = nuevoUuid();
         const plan = opciones.plan || null;
         g('visita-titulo').textContent = 'Nueva visita';
         g('v-id').value = '';
         g('v-paciente').value = plan ? plan.paciente_id : (opciones.pacienteId || '');
+        g('v-req-plan').value = plan ? 'si' : 'no';
         poblarPlanesVisita(g('v-paciente').value, plan ? plan.id : '');
         const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(d.getHours() + 1);
         g('v-fecha').value = isoToLocalInput(d.toISOString());
@@ -1002,9 +1445,11 @@
         g('v-anular').hidden = true;
         g('v-guardar').hidden = false;
       }
-      actualizarDomVisita(); mostrarCamposProcs();
+      actualizarDomVisita(); mostrarCamposProcs(); actualizarResumenProcs('vp');
+      actualizarBloquePlan(); actualizarAyudaZona();
       if (!visita) recalcularValores(true); else actualizarTotal();
       actualizarAvisoIndicacion();
+      ORDEN.forEach(t => { pintarFotos(t); });
       g('visita-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
     function cerrarVisita() { g('visita-card').hidden = true; }
@@ -1015,19 +1460,58 @@
       poblarPlanesVisita(id, '');
       const p = pacienteDe(id);
       if (p && p.direccion && !g('v-direccion').value) g('v-direccion').value = p.direccion;
+      // Paciente sin planes: si dijo que requiere plan, se propone crear uno
+      if (g('v-req-plan').value === 'si' && !planesDelPaciente(id, '').length) { g('v-plan').value = '__nuevo'; actualizarBloquePlan(); }
       actualizarAvisoIndicacion();
+    });
+    g('v-req-plan').addEventListener('change', () => {
+      if (g('v-req-plan').value === 'si') {
+        const id = g('v-paciente').value;
+        if (id && !planesDelPaciente(id, '').length) g('v-plan').value = '__nuevo';
+        else if (id && planesDelPaciente(id, '').length === 1) g('v-plan').value = planesDelPaciente(id, '')[0].id;
+      }
+      actualizarBloquePlan(); actualizarAvisoIndicacion();
     });
     g('v-plan').addEventListener('change', () => {
-      if (!g('v-id').value) aplicarPlanAVisita(planes.find(p => p.id === g('v-plan').value));
-      actualizarAvisoIndicacion();
+      const plan = planes.find(p => p.id === g('v-plan').value);
+      if (!g('v-id').value && plan) aplicarPlanAVisita(plan);
+      actualizarBloquePlan(); actualizarAvisoIndicacion();
     });
     g('v-lugar').addEventListener('change', () => { actualizarDomVisita(); recalcularValores(false); });
-    g('v-zona').addEventListener('change', () => { valoresEditados.tras = false; recalcularValores(false); });
-    g('v-procs').addEventListener('change', () => { mostrarCamposProcs(); recalcularValores(false); actualizarAvisoIndicacion(); });
+    g('v-zona').addEventListener('change', () => { valoresEditados.tras = false; actualizarAyudaZona(); recalcularValores(false); });
+    g('v-procs').addEventListener('change', () => {
+      actualizarResumenProcs('vp'); mostrarCamposProcs(); recalcularValores(false); actualizarAvisoIndicacion();
+    });
     g('v-val-proc').addEventListener('input', () => { valoresEditados.proc = true; actualizarTotal(); });
     g('v-val-tras').addEventListener('input', () => { valoresEditados.tras = true; actualizarTotal(); });
     g('v-recalcular').addEventListener('click', () => { valoresEditados = { proc: false, tras: false }; recalcularValores(true); });
     g('v-cancelar').addEventListener('click', cerrarVisita);
+
+    // Fotos: subir al elegir archivos y quitar las recién agregadas
+    g('v-campos').addEventListener('change', (e) => {
+      const entrada = e.target.closest('input[type="file"][data-foto]');
+      if (!entrada) return;
+      const archivos = [...entrada.files];
+      subirFotos(entrada.dataset.foto, archivos).finally(() => { entrada.value = ''; });
+    });
+    g('v-campos').addEventListener('click', async (e) => {
+      const q = e.target.closest('[data-quitar-foto]');
+      if (q) {
+        const tipo = q.dataset.tipo, i = Number(q.dataset.quitarFoto);
+        const f = (fotos[tipo] || [])[i];
+        if (!f) return;
+        try { await supabaseClient.storage.from('cuidados').remove([f.path]); } catch (err) { /* ya no estaba */ }
+        fotos[tipo].splice(i, 1);
+        fotosNuevas.delete(f.path);
+        await pintarFotos(tipo);
+        return;
+      }
+      const qp = e.target.closest('[data-quitar-proc]');
+      if (qp) {
+        g('vp-' + qp.dataset.quitarProc).checked = false;
+        g('v-procs').dispatchEvent(new Event('change'));
+      }
+    });
 
     function leerProcedimientos() {
       return procsMarcadas().map(t => {
@@ -1036,7 +1520,9 @@
           const v = g(`f-${t}-${c.k}`).value.trim();
           if (v !== '') datos[c.k] = c.t === 'number' ? Number(v) : v;
         });
-        return { tipo: t, datos };
+        const item = { tipo: t, datos };
+        if ((fotos[t] || []).length) item.fotos = fotos[t];
+        return item;
       });
     }
 
@@ -1053,40 +1539,88 @@
         for (const pr of procs) {
           const faltan = (REQUERIDOS[pr.tipo] || []).filter(k => pr.datos[k] === undefined);
           if (faltan.length) {
-            err.textContent = `${PROCS[pr.tipo].nombre}: para dar la visita por realizada falta ${faltan.map(k => etiquetaCampo(pr.tipo, k)).join(', ')}.`;
+            err.textContent = `${nombreProc(pr.tipo)}: para dar la visita por realizada falta ${faltan.map(k => etiquetaCampo(pr.tipo, k)).join(', ')}.`;
             return;
           }
+        }
+      }
+
+      // ¿Requiere plan? Si es que sí: uno existente o uno nuevo con sus sesiones y en qué consiste
+      const requierePlan = g('v-req-plan').value === 'si';
+      let sesionesNuevo = null;
+      if (requierePlan) {
+        const sel = g('v-plan').value;
+        if (!sel) { err.textContent = 'Elige el plan, o “Plan nuevo” para crearlo. Si es una sola visita, elige “No, solo una visita”.'; return; }
+        if (sel === '__nuevo') {
+          if (!g('vn-tipo').value) { err.textContent = 'Elige el tipo de plan.'; return; }
+          sesionesNuevo = Number(g('vn-sesiones').value);
+          if (!sesionesNuevo || sesionesNuevo < 1) { err.textContent = 'Indica la cantidad de sesiones del plan.'; return; }
         }
       }
 
       const num = (id) => (g(id).value !== '' ? Number(g(id).value) : null);
       const signos = { pa: g('v-pa').value.trim() || null, fc: num('v-fc'), temp: num('v-temp'), sat: num('v-sat') };
       const hayVitales = Object.values(signos).some(v => v !== null);
-      const payload = {
-        paciente_id: g('v-paciente').value,
-        plan_id: g('v-plan').value || null,
-        personal_id: g('v-personal').value || null,
-        fecha_hora: localInputToISO(g('v-fecha').value),
-        lugar: g('v-lugar').value,
-        direccion: dom ? g('v-direccion').value.trim() : null,
-        zona_id: dom ? (g('v-zona').value || null) : null,
-        estado: g('v-estado').value,
-        procedimientos: procs,
-        signos: hayVitales ? signos : null,
-        observaciones: g('v-obs').value.trim() || null,
-        indicaciones_cuidador: g('v-indicaciones').value.trim() || null,
-        recibe_nombre: g('v-recibe').value.trim() || null,
-        valor_procedimientos: Number(g('v-val-proc').value) || 0,
-        valor_traslado: Number(g('v-val-tras').value) || 0,
-        actualizado_en: new Date().toISOString(),
-      };
       const btn = g('v-guardar'); btn.disabled = true;
       try {
+        const pacienteId = g('v-paciente').value;
+        let planId = null;
+        if (requierePlan) {
+          const sel = g('v-plan').value;
+          if (sel !== '__nuevo') planId = sel;
+          else {
+            const desc = g('vn-descripcion').value.trim() || null;
+            const frec = g('vn-frecuencia').value;
+            const tipos = procs.map(p => p.tipo);
+            let tipo = { id: null, nombre: null };
+            if (v15) {
+              tipo = await resolverTipoPlan('vn', desc, sesionesNuevo, frec, tipos);
+              if (tipo.error) { err.textContent = tipo.error; return; }
+            }
+            const planPayload = {
+              paciente_id: pacienteId, procedimientos: tipos, lugar: g('v-lugar').value,
+              direccion: dom ? g('v-direccion').value.trim() : null, zona_id: dom ? (g('v-zona').value || null) : null,
+              personal_id: g('v-personal').value || null, frecuencia: frec, visitas_total: sesionesNuevo,
+              fecha_inicio: ymd(new Date(g('v-fecha').value)), pagador_tipo: 'paciente', estado: 'activo',
+            };
+            if (v15) { planPayload.tipo_plan_id = tipo.id; planPayload.nombre = tipo.nombre; planPayload.descripcion = desc; }
+            const r = await supabaseClient.from('planes_cuidado').insert(planPayload).select('id').single();
+            if (r.error) { err.textContent = 'No se pudo crear el plan: ' + r.error.message; return; }
+            planId = r.data.id;
+            await cargarPlanes();
+          }
+        }
+
+        const payload = {
+          paciente_id: pacienteId,
+          plan_id: planId,
+          personal_id: g('v-personal').value || null,
+          fecha_hora: localInputToISO(g('v-fecha').value),
+          lugar: g('v-lugar').value,
+          direccion: dom ? g('v-direccion').value.trim() : null,
+          zona_id: dom ? (g('v-zona').value || null) : null,
+          estado: g('v-estado').value,
+          procedimientos: procs,
+          signos: hayVitales ? signos : null,
+          observaciones: g('v-obs').value.trim() || null,
+          indicaciones_cuidador: g('v-indicaciones').value.trim() || null,
+          recibe_nombre: g('v-recibe').value.trim() || null,
+          valor_procedimientos: Number(g('v-val-proc').value) || 0,
+          valor_traslado: Number(g('v-val-tras').value) || 0,
+          actualizado_en: new Date().toISOString(),
+        };
         const id = g('v-id').value;
         const { error } = id
           ? await supabaseClient.from('visitas_cuidado').update(payload).eq('id', id)
-          : await supabaseClient.from('visitas_cuidado').insert(payload);
+          : await supabaseClient.from('visitas_cuidado').insert(Object.assign({ id: visitaIdActual }, payload));
         if (error) { err.textContent = 'No se pudo guardar: ' + error.message; return; }
+
+        // Dirección: opcionalmente queda guardada en la ficha del paciente
+        if (dom && g('v-guardar-dir').checked && payload.direccion) {
+          const { error: eDir } = await supabaseClient.from('pacientes').update({ direccion: payload.direccion }).eq('id', pacienteId);
+          const p = pacienteDe(pacienteId);
+          if (!eDir && p) p.direccion = payload.direccion;
+        }
         await cargarVisitas(); renderVisitas(); renderPlanes(); renderResumen();
         cerrarVisita();
       } finally { btn.disabled = false; }
@@ -1106,9 +1640,19 @@
       cerrarVisita();
     });
 
+    // Enlaces "＋ Paciente nuevo", "＋ Agregar profesional" y "＋ Agregar un procedimiento"
+    document.addEventListener('click', (e) => {
+      const np = e.target.closest('[data-nuevo-paciente]');
+      if (np) { abrirNuevoPaciente(np.dataset.nuevoPaciente); return; }
+      const pr = e.target.closest('[data-nuevo-profesional]');
+      if (pr) { abrirNuevoProfesional(pr.dataset.nuevoProfesional); return; }
+      const pc = e.target.closest('[data-nuevo-procedimiento]');
+      if (pc) { abrirNuevoProcedimiento(pc.dataset.nuevoProcedimiento); }
+    });
+
     // ─── Pestañas y filtros ───
     function mostrarVista(v) {
-      ['visitas', 'planes', 'tarifas'].forEach(x => { g('vista-' + x).hidden = x !== v; });
+      ['visitas', 'planes', 'catalogo'].forEach(x => { g('vista-' + x).hidden = x !== v; });
       document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('activo', b.dataset.vista === v));
     }
     document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => mostrarVista(b.dataset.vista)));
@@ -1129,21 +1673,23 @@
     (async () => {
       const s = await initLayout('domiciliaria');
       if (!s) return;
-      dibujarChecksProcs('p-procs', 'pp');
-      dibujarChecksProcs('v-procs', 'vp');
-      dibujarCamposProcs();
       const ok = await cargarBase();
       if (!ok) {
         g('aviso-v14').hidden = false;
         g('listados').hidden = true;
         return;
       }
+      g('aviso-v15').hidden = v15;
+      Object.entries(PREFIJOS_PROCS).forEach(([pref, cont]) => dibujarChecksProcs(cont, pref));
+      dibujarCamposProcs();
       try {
         const cfg = await getConfig();
         if (cfg && cfg.razon_social) nombreEquipo = 'Equipo ' + cfg.razon_social;
       } catch (e) { /* queda el nombre genérico */ }
       poblarSelectores();
       await Promise.all([cargarPlanes(), cargarVisitas()]);
+      ['pp', 'vp', 'tp'].forEach(actualizarResumenProcs);
+      actualizarBloquePlan();
       renderResumen(); renderVisitas(); renderPlanes(); renderTarifas();
       g('guia').open = !visitas.length && !planes.length;      // la primera vez, la guía se muestra abierta
 

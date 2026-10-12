@@ -90,7 +90,10 @@ Uso **operacional interno** (dueñas/equipo). Aparte tiene páginas públicas pa
 
 17. `v14_atencion_domiciliaria.sql` — `zonas_traslado`, `tarifas_procedimiento`, `planes_cuidado`, `visitas_cuidado` (módulo Atención domiciliaria; ver BITACORA).
 
+18. `v15_planes_comunas_fotos.sql` — `zonas_traslado.km`, `tipos_plan`, `procedimientos_extra`, `planes_cuidado.(tipo_plan_id,nombre,descripcion)`, 12 comunas de la Provincia de Concepción y bucket privado `cuidados` (fotos).
+
 ### Módulo Atención domiciliaria (2026-10)
+- v15: "¿Requiere plan de cuidado?" Sí/No; tipos de plan en catálogo (sesiones + en qué consiste); comunas con km; procedimientos propios; fotos por procedimiento en bucket privado `cuidados` (ruta `<org>/<visita>/<procedimiento>/…`, URL firmada).
 - Pantalla `pages/domiciliaria.html`: Visitas · Planes de cuidado · Tarifas (valor por procedimiento + zonas de traslado según lejanía).
 - Procedimientos: curación, sonda, retiro de puntos, ileostomía, medicamentos, vacunación, cuidados generales (campos clínicos propios, guardados en `visitas_cuidado.procedimientos` jsonb).
 - Plan = indicación médica (médico, fecha, vigencia, texto) + frecuencia + cuidador + pagador (paciente o tercero). Visita puede ser suelta o de un plan, a domicilio o en la clínica.
