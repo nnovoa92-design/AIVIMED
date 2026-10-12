@@ -36,6 +36,13 @@
     .total-caja { font-size:1.1rem; font-weight:700; color:var(--color-primary-dark); }
     .acciones-fila { display:flex; gap:0.4rem; flex-wrap:wrap; }
     .vacio { color:var(--color-text-muted); font-size:0.9rem; padding:1rem 0; }
+    .enlace-mini { background:none; border:none; box-shadow:none; padding:0; margin-left:0.4rem; border-radius:0;
+      color:var(--color-primary-dark); font-size:0.74rem; font-weight:700; text-transform:none; letter-spacing:0; cursor:pointer; text-decoration:underline; }
+    .enlace-mini:hover { background:none; box-shadow:none; transform:none; color:var(--color-primary); }
+    .ayuda { display:block; margin-top:0.35rem; font-size:0.78rem; line-height:1.4; color:var(--color-text-muted); }
+    .guia { background:var(--color-bg-soft); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:0.7rem 1rem; margin-bottom:1rem; }
+    .guia summary { cursor:pointer; font-weight:700; color:var(--color-primary-dark); }
+    .guia ol { margin:0.6rem 0 0.2rem; padding-left:1.2rem; font-size:0.88rem; line-height:1.55; }
     .zona-fila { display:grid; grid-template-columns:2fr 1fr auto auto; gap:0.5rem; align-items:center; margin-bottom:0.5rem; }
     @media (max-width:640px) { .zona-fila { grid-template-columns:1fr 1fr; } }
   </style>
@@ -59,11 +66,17 @@
         <!-- ═══════════ Formulario: plan de cuidado ═══════════ -->
         <div class="card" id="plan-card" hidden>
           <h2 id="plan-titulo" style="margin-top:0;">Nuevo plan de cuidado</h2>
+          <p class="ayuda" style="margin-top:-0.25rem;margin-bottom:1rem;">
+            Un <strong>plan de cuidado</strong> agrupa <strong>varias visitas de un mismo paciente</strong> (por ejemplo, una curación diaria por 10 días).
+            Guarda la indicación médica, la frecuencia y quién paga, para no repetirlo en cada visita.
+          </p>
           <form id="plan-form" novalidate>
             <input type="hidden" id="p-id" />
             <div class="form-row">
-              <div class="form-group"><label for="p-paciente">Paciente *</label><select id="p-paciente"><option value="">Seleccionar…</option></select></div>
-              <div class="form-group"><label for="p-personal">Profesional a cargo</label><select id="p-personal"><option value="">Sin asignar</option></select></div>
+              <div class="form-group"><label for="p-paciente">Paciente * <button type="button" class="enlace-mini" data-nuevo-paciente="p-paciente">＋ Paciente nuevo</button></label>
+                <select id="p-paciente"><option value="">Seleccionar…</option></select></div>
+              <div class="form-group"><label for="p-personal">Profesional a cargo <button type="button" class="enlace-mini" data-nuevo-profesional="p-personal">＋ Agregar profesional</button></label>
+                <select id="p-personal"><option value="">Equipo de la clínica</option></select></div>
               <div class="form-group"><label for="p-estado">Estado</label>
                 <select id="p-estado"><option value="activo">Activo</option><option value="suspendido">Suspendido</option><option value="finalizado">Finalizado</option></select>
               </div>
@@ -147,15 +160,22 @@
           <form id="visita-form" novalidate>
             <input type="hidden" id="v-id" />
             <div class="form-row">
-              <div class="form-group"><label for="v-paciente">Paciente *</label><select id="v-paciente"><option value="">Seleccionar…</option></select></div>
-              <div class="form-group"><label for="v-plan">Plan de cuidado</label><select id="v-plan"><option value="">Visita suelta (sin plan)</option></select></div>
+              <div class="form-group"><label for="v-paciente">Paciente * <button type="button" class="enlace-mini" data-nuevo-paciente="v-paciente">＋ Paciente nuevo</button></label>
+                <select id="v-paciente"><option value="">Seleccionar…</option></select></div>
               <div class="form-group"><label for="v-fecha">Fecha y hora *</label><input type="datetime-local" id="v-fecha" /></div>
-            </div>
-            <div class="form-row">
               <div class="form-group"><label for="v-lugar">Lugar</label>
                 <select id="v-lugar"><option value="domicilio">A domicilio</option><option value="clinica">En la clínica</option></select>
               </div>
-              <div class="form-group"><label for="v-personal">Profesional</label><select id="v-personal"><option value="">Sin asignar</option></select></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label for="v-plan">¿Parte de un plan de cuidado? (opcional)</label>
+                <select id="v-plan"><option value="">No: es una visita suelta</option></select>
+                <span class="ayuda" id="v-plan-ayuda"></span>
+              </div>
+              <div class="form-group"><label for="v-personal">Profesional <button type="button" class="enlace-mini" data-nuevo-profesional="v-personal">＋ Agregar profesional</button></label>
+                <select id="v-personal"><option value="">Equipo de la clínica</option></select>
+                <span class="ayuda" id="v-personal-ayuda"></span>
+              </div>
               <div class="form-group"><label for="v-estado">Estado</label>
                 <select id="v-estado"><option value="programada">Programada</option><option value="realizada">Realizada</option><option value="cancelada">Cancelada</option></select>
               </div>
@@ -204,6 +224,16 @@
 
         <!-- ═══════════ Listados ═══════════ -->
         <div class="card" id="listados">
+          <details class="guia" id="guia">
+            <summary>¿Cómo funciona este módulo?</summary>
+            <ol>
+              <li><strong>Tarifas:</strong> en la pestaña “Tarifas” carga cuánto cobras por cada procedimiento y las zonas de traslado según la lejanía.</li>
+              <li><strong>Plan de cuidado</strong> (opcional): úsalo cuando un paciente necesita <em>varias visitas</em>, por ejemplo una curación diaria por 10 días.
+                Guarda la indicación médica, la frecuencia y quién paga. Si es una sola atención, no necesitas plan.</li>
+              <li><strong>Visita:</strong> cada atención, a domicilio o en la clínica. Ahí registras lo que hiciste y se calcula el valor
+                (procedimiento + traslado). Puede ser una visita suelta o parte de un plan.</li>
+            </ol>
+          </details>
           <div class="tabs">
             <button type="button" data-vista="visitas" class="activo">Visitas</button>
             <button type="button" data-vista="planes">Planes de cuidado</button>
@@ -258,6 +288,50 @@
         </div>
 
       </div>
+    </div>
+  </div>
+
+  <!-- Paciente nuevo (desde la visita o el plan) -->
+  <div class="modal-fondo" id="np-modal" hidden>
+    <div class="modal-caja">
+      <h2 style="margin-top:0;">Paciente nuevo</h2>
+      <form id="np-form" novalidate>
+        <div class="form-row">
+          <div class="form-group"><label for="np-nombre">Nombre *</label><input id="np-nombre" autocomplete="off" /></div>
+          <div class="form-group"><label for="np-apellido">Apellido *</label><input id="np-apellido" autocomplete="off" /></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label for="np-rut">RUT</label><input id="np-rut" placeholder="12.345.678-9" maxlength="12" autocomplete="off" /></div>
+          <div class="form-group"><label for="np-telefono">Teléfono</label><input id="np-telefono" placeholder="+56 9 1234 5678" autocomplete="off" /></div>
+        </div>
+        <div class="form-group"><label for="np-direccion">Dirección (donde se atenderá)</label><input id="np-direccion" placeholder="Calle, número, comuna" autocomplete="off" /></div>
+        <div class="form-group"><label for="np-email">Correo</label><input type="email" id="np-email" autocomplete="off" /></div>
+        <div class="modal-acciones">
+          <button type="submit" id="np-guardar">Guardar paciente</button>
+          <button type="button" id="np-cancelar" class="btn-secondary">Cancelar</button>
+        </div>
+        <p class="error-message" id="np-error"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Profesional nuevo -->
+  <div class="modal-fondo" id="pr-modal" hidden>
+    <div class="modal-caja">
+      <h2 style="margin-top:0;">Agregar profesional</h2>
+      <p class="ayuda" style="margin-top:-0.25rem;">Queda en el menú <strong>Personal</strong>, donde puedes completar sus datos.</p>
+      <form id="pr-form" novalidate>
+        <div class="form-row">
+          <div class="form-group"><label for="pr-nombre">Nombre *</label><input id="pr-nombre" autocomplete="off" /></div>
+          <div class="form-group"><label for="pr-apellido">Apellido *</label><input id="pr-apellido" autocomplete="off" /></div>
+        </div>
+        <div class="form-group"><label for="pr-especialidad">Especialidad</label><input id="pr-especialidad" placeholder="Ej: Enfermería" autocomplete="off" /></div>
+        <div class="modal-acciones">
+          <button type="submit" id="pr-guardar">Guardar profesional</button>
+          <button type="button" id="pr-cancelar" class="btn-secondary">Cancelar</button>
+        </div>
+        <p class="error-message" id="pr-error"></p>
+      </form>
     </div>
   </div>
 
@@ -514,13 +588,117 @@
     });
 
     // ─── Selectores ───
+    let nombreEquipo = 'Equipo de la clínica';
+    let planVolverAVisita = false;      // al guardar un plan creado desde una visita, se vuelve a ella
+
     function poblarSelectores() {
+      const previos = ['p-paciente', 'v-paciente', 'p-personal', 'v-personal'].map(id => [id, g(id).value]);
       const opPac = '<option value="">Seleccionar…</option>' + pacientes.map(p => `<option value="${p.id}">${esc(p.apellido + ', ' + p.nombre)}${p.dni ? ' · ' + esc(p.dni) : ''}</option>`).join('');
-      const opPer = '<option value="">Sin asignar</option>' + personal.map(p => `<option value="${p.id}">${esc(p.nombre + ' ' + p.apellido)}</option>`).join('');
+      const opPer = `<option value="">${esc(nombreEquipo)} (sin profesional específico)</option>` + personal.map(p => `<option value="${p.id}">${esc(p.nombre + ' ' + p.apellido)}</option>`).join('');
       g('p-paciente').innerHTML = opPac; g('v-paciente').innerHTML = opPac;
       g('p-personal').innerHTML = opPer; g('v-personal').innerHTML = opPer;
+      previos.forEach(([id, v]) => { if (v) g(id).value = v; });     // conserva lo que ya estaba elegido
       poblarZonas();
+      g('v-personal-ayuda').textContent = personal.length
+        ? ''
+        : 'Aún no hay profesionales cargados: agrégalos con “＋ Agregar profesional” o en el menú Personal. Mientras tanto la visita queda a nombre del equipo.';
     }
+
+    // ─── Paciente nuevo y profesional nuevo (sin salir de la pantalla) ───
+    let destinoPaciente = null, destinoProfesional = null;
+
+    function usarEnSelect(selectId, valor) {
+      const sel = g(selectId);
+      sel.value = valor;
+      sel.dispatchEvent(new Event('change'));
+    }
+
+    function abrirNuevoPaciente(selectId) {
+      destinoPaciente = selectId;
+      ['np-nombre', 'np-apellido', 'np-rut', 'np-telefono', 'np-direccion', 'np-email'].forEach(id => { g(id).value = ''; });
+      g('np-error').textContent = '';
+      g('np-modal').hidden = false;
+      g('np-nombre').focus();
+    }
+    g('np-cancelar').addEventListener('click', () => { g('np-modal').hidden = true; });
+    g('np-modal').addEventListener('click', (e) => { if (e.target.id === 'np-modal') g('np-modal').hidden = true; });
+    g('np-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = g('np-error'); err.textContent = '';
+      const nombre = g('np-nombre').value.trim(), apellido = g('np-apellido').value.trim();
+      if (!nombre || !apellido) { err.textContent = 'Ingresa nombre y apellido.'; return; }
+      const rutIngresado = g('np-rut').value.trim();
+      if (rutIngresado && !rutValido(rutIngresado)) { err.textContent = 'El RUT no es válido: revisa el dígito verificador.'; return; }
+      const dni = rutIngresado ? formatearRut(rutIngresado) : null;
+
+      // Si ya existe ese RUT, se usa el paciente existente (no se duplica)
+      const ya = dni && pacientes.find(p => p.dni && rutLimpio(p.dni) === rutLimpio(dni));
+      if (ya) {
+        g('np-modal').hidden = true;
+        usarEnSelect(destinoPaciente, ya.id);
+        alert(`Ese RUT ya está registrado: ${nombrePac(ya)}. Se seleccionó ese paciente.`);
+        return;
+      }
+      const btn = g('np-guardar'); btn.disabled = true;
+      try {
+        const { data, error } = await supabaseClient.from('pacientes').insert({
+          nombre, apellido, dni,
+          telefono: g('np-telefono').value.trim() ? formatearTelefonoCL(g('np-telefono').value) : null,
+          direccion: g('np-direccion').value.trim() || null,
+          email: g('np-email').value.trim() || null,
+        }).select('id,nombre,apellido,dni,telefono,direccion').single();
+        if (error) {
+          err.textContent = /duplicate|unique|23505/i.test(error.message || '')
+            ? `Ya existe un paciente con el RUT ${dni} (¿dado de baja?).`
+            : 'No se pudo crear el paciente: ' + error.message;
+          return;
+        }
+        pacientes.push(data);
+        pacientes.sort((a, b) => (a.apellido || '').localeCompare(b.apellido || '', 'es'));
+        poblarSelectores();
+        g('np-modal').hidden = true;
+        usarEnSelect(destinoPaciente, data.id);
+      } finally { btn.disabled = false; }
+    });
+
+    function abrirNuevoProfesional(selectId) {
+      destinoProfesional = selectId;
+      ['pr-nombre', 'pr-apellido', 'pr-especialidad'].forEach(id => { g(id).value = ''; });
+      g('pr-error').textContent = '';
+      g('pr-modal').hidden = false;
+      g('pr-nombre').focus();
+    }
+    g('pr-cancelar').addEventListener('click', () => { g('pr-modal').hidden = true; });
+    g('pr-modal').addEventListener('click', (e) => { if (e.target.id === 'pr-modal') g('pr-modal').hidden = true; });
+    g('pr-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = g('pr-error'); err.textContent = '';
+      const nombre = g('pr-nombre').value.trim(), apellido = g('pr-apellido').value.trim();
+      if (!nombre || !apellido) { err.textContent = 'Ingresa nombre y apellido.'; return; }
+      const btn = g('pr-guardar'); btn.disabled = true;
+      try {
+        const { data, error } = await supabaseClient.from('personal').insert({
+          nombre, apellido, especialidad: g('pr-especialidad').value.trim() || null,
+        }).select('id,nombre,apellido').single();
+        if (error) { err.textContent = 'No se pudo guardar: ' + error.message; return; }
+        personal.push(data);
+        personal.sort((a, b) => (a.apellido || '').localeCompare(b.apellido || '', 'es'));
+        poblarSelectores();
+        g('pr-modal').hidden = true;
+        usarEnSelect(destinoProfesional, data.id);
+      } finally { btn.disabled = false; }
+    });
+
+    // Enlaces "＋ Paciente nuevo", "＋ Agregar profesional" y "Crear un plan para este paciente"
+    document.addEventListener('click', (e) => {
+      const np = e.target.closest('[data-nuevo-paciente]');
+      if (np) { abrirNuevoPaciente(np.dataset.nuevoPaciente); return; }
+      const pr = e.target.closest('[data-nuevo-profesional]');
+      if (pr) { abrirNuevoProfesional(pr.dataset.nuevoProfesional); return; }
+      if (e.target.closest('[data-crear-plan]')) {
+        abrirPlan(null, { pacienteId: g('v-paciente').value, volverAVisita: true });
+      }
+    });
     function poblarZonas() {
       const op = '<option value="">Sin traslado</option>' + zonas.filter(z => z.activo).map(z => `<option value="${z.id}">${esc(z.nombre)} · ${dinero(z.valor)}</option>`).join('');
       const pz = g('p-zona').value, vz = g('v-zona').value;
@@ -539,7 +717,9 @@
     }
     function actualizarPagador() { g('p-pag-datos').hidden = g('p-pag-tipo').value !== 'tercero'; }
 
-    function abrirPlan(plan) {
+    function abrirPlan(plan, opciones) {
+      opciones = opciones || {};
+      planVolverAVisita = !!opciones.volverAVisita;
       cerrarVisita();
       g('plan-card').hidden = false;
       g('p-error').textContent = '';
@@ -571,6 +751,10 @@
       g('p-pag-email').value = plan ? (plan.pagador_email || '') : '';
       g('p-notas').value = plan ? (plan.notas || '') : '';
       actualizarDomPlan(); actualizarPagador();
+      if (!plan && opciones.pacienteId) {            // viene desde una visita: ya conocemos al paciente
+        g('p-paciente').value = opciones.pacienteId;
+        g('p-paciente').dispatchEvent(new Event('change'));
+      }
 
       // Visitas del plan (solo al editar)
       g('p-visitas-box').hidden = !plan;
@@ -645,12 +829,22 @@
       const btn = g('p-guardar'); btn.disabled = true;
       try {
         const id = g('p-id').value;
-        const { error } = id
-          ? await supabaseClient.from('planes_cuidado').update(payload).eq('id', id)
-          : await supabaseClient.from('planes_cuidado').insert(payload);
+        let planId = id, error = null;
+        if (id) {
+          ({ error } = await supabaseClient.from('planes_cuidado').update(payload).eq('id', id));
+        } else {
+          const r = await supabaseClient.from('planes_cuidado').insert(payload).select('id').single();
+          error = r.error; planId = r.data && r.data.id;
+        }
         if (error) { err.textContent = 'No se pudo guardar: ' + error.message; return; }
+        const volver = planVolverAVisita;
         await cargarPlanes(); renderPlanes(); renderResumen();
         cerrarPlan();
+        // Creado desde una visita: se vuelve a ella con el plan ya elegido
+        if (volver && planId) {
+          const nuevo = planes.find(p => p.id === planId);
+          if (nuevo) abrirVisita(null, { plan: nuevo });
+        }
       } finally { btn.disabled = false; }
     });
 
@@ -700,11 +894,22 @@
     }
     function poblarPlanesVisita(pacienteId, seleccionado) {
       const lista = pacienteId ? planesDelPaciente(pacienteId, seleccionado) : [];
-      g('v-plan').innerHTML = '<option value="">Visita suelta (sin plan)</option>' + lista.map(p => {
+      g('v-plan').innerHTML = '<option value="">No: es una visita suelta</option>' + lista.map(p => {
         const proc = (p.procedimientos || []).map(t => (PROCS[t] || {}).nombre || t).join(', ');
-        return `<option value="${p.id}">${esc(proc)}${p.fecha_inicio ? ' · desde ' + esc(fmtDia(p.fecha_inicio)) : ''}</option>`;
+        return `<option value="${p.id}">Plan: ${esc(proc)}${p.fecha_inicio ? ' · desde ' + esc(fmtDia(p.fecha_inicio)) : ''}</option>`;
       }).join('');
       g('v-plan').value = seleccionado || '';
+      actualizarAyudaPlan(lista.length > 0, !!pacienteId);
+    }
+
+    // Explica qué es un plan y, si el paciente no tiene, ofrece crearlo en el momento
+    function actualizarAyudaPlan(hayPlanes, hayPaciente) {
+      const generico = 'Un plan agrupa varias visitas de un mismo paciente (ej.: una curación diaria por 10 días) y guarda la indicación médica y quién paga. Para una sola atención déjalo como visita suelta.';
+      const caja = g('v-plan-ayuda');
+      if (!hayPaciente) { caja.textContent = generico; return; }
+      caja.innerHTML = hayPlanes
+        ? 'Elige el plan al que pertenece esta visita, o déjala como visita suelta.'
+        : 'Este paciente aún no tiene planes. ' + esc(generico) + ' <button type="button" class="enlace-mini" data-crear-plan>Crear un plan para este paciente</button>';
     }
 
     function actualizarAvisoIndicacion() {
@@ -933,9 +1138,14 @@
         g('listados').hidden = true;
         return;
       }
+      try {
+        const cfg = await getConfig();
+        if (cfg && cfg.razon_social) nombreEquipo = 'Equipo ' + cfg.razon_social;
+      } catch (e) { /* queda el nombre genérico */ }
       poblarSelectores();
       await Promise.all([cargarPlanes(), cargarVisitas()]);
       renderResumen(); renderVisitas(); renderPlanes(); renderTarifas();
+      g('guia').open = !visitas.length && !planes.length;      // la primera vez, la guía se muestra abierta
 
       // Si llegan con ?paciente=ID (ej. desde la ficha del paciente), se abre una visita para él
       const pac = new URLSearchParams(location.search).get('paciente');
