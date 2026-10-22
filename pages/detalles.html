@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Detalle de atención · AIVIMED</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    [hidden] { display:none !important; }
+    .tabla-scroll { overflow-x:auto; }
+    tr.fila-click { cursor:pointer; }
+    tr.anulado td { text-decoration:line-through; opacity:0.55; }
+    .seccion-titulo { font-size:0.95rem; color:var(--color-primary-dark); margin:1.25rem 0 0.5rem; }
+    .ayuda { display:block; margin-top:0.35rem; font-size:0.78rem; line-height:1.4; color:var(--color-text-muted); }
+    .aviso-caja { border-radius:var(--radius-sm); padding:0.6rem 0.85rem; font-size:0.85rem; margin-bottom:0.85rem; }
+    .aviso-caja.rojo { background:#fbe0dd; color:#8a1a18; }
+    .aviso-caja.ambar { background:#fdf0d3; color:#7a5010; }
+    .aviso-caja.verde { background:var(--color-primary-light); color:var(--color-primary-dark); }
+    .enlace-mini { background:none; border:none; box-shadow:none; padding:0.2rem 0.4rem; border-radius:0;
+      color:var(--color-primary-dark); font-size:0.8rem; font-weight:700; text-transform:none; letter-spacing:0; cursor:pointer; }
+    .enlace-mini:hover { background:none; box-shadow:none; transform:none; color:var(--color-danger); }
+    .lineas-tabla { min-width:860px; }
+    .lineas-tabla th { font-size:0.68rem; }
+    .lineas-tabla td { padding:0.3rem 0.3rem; vertical-align:middle; border-top:1px solid var(--color-border); }
+    .lineas-tabla input, .lineas-tabla select { padding:0.4rem 0.5rem; font-size:0.85rem; }
+    .lineas-tabla td.sub { text-align:right; white-space:nowrap; font-weight:600; }
+    .totales { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:0.75rem; margin:0.75rem 0; }
+    .totales .caja { background:var(--color-bg-soft); border:1px solid var(--color-border); border-radius:var(--radius-sm); padding:0.6rem 0.9rem; }
+    .totales .caja .lbl { font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--color-text-muted); font-weight:600; }
+    .totales .caja .val { font-size:1.15rem; font-weight:700; color:var(--color-primary-dark); }
+    .totales .caja.total { background:var(--color-primary-light); border-color:var(--color-primary); }
+    .acciones { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:1rem; }
+    .origen-fila { display:grid; grid-template-columns:1fr auto; gap:0.5rem; align-items:end; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="main">
+      <header class="topbar"><h1>Detalle de atención</h1></header>
+      <div class="content">
+
+        <div class="card" id="aviso-v16" hidden style="border-left:4px solid var(--color-warning);">
+          <strong>Falta activar este módulo en la base de datos.</strong>
+          <p style="margin:0.4rem 0 0;color:var(--color-text-muted);font-size:0.88rem;">
+            Hay que correr la actualización <code>v16_detalle_atencion.sql</code> en Supabase. Cuando esté lista, recarga esta página.
+          </p>
+        </div>
+
+        <!-- ═══════════ Formulario ═══════════ -->
+        <div class="card" id="form-card" hidden>
+          <h2 id="form-titulo" style="margin-top:0;">Nuevo detalle de atención</h2>
+          <div id="estado-banner"></div>
+          <form id="d-form" novalidate>
+            <input type="hidden" id="d-id" />
+            <div class="form-row">
+              <div class="form-group"><label for="d-paciente">Paciente *</label>
+                <select id="d-paciente"><option value="">Seleccionar…</option></select></div>
+              <div class="form-group"><label for="d-fecha">Fecha del detalle</label><input type="date" id="d-fecha" /></div>
+              <div class="form-group"><label for="d-prevision">Previsión</label>
+                <select id="d-prevision">
+                  <option value="">No indicada</option>
+                  <option value="fonasa">FONASA</option>
+                  <option value="isapre">ISAPRE</option>
+                </select>
+              </div>
+              <div class="form-group" id="d-isapre-grupo" hidden><label for="d-isapre">¿Cuál ISAPRE?</label>
+                <input id="d-isapre" placeholder="Ej: Banmédica, Colmena, Consalud…" autocomplete="off" /></div>
+            </div>
+
+            <h3 class="seccion-titulo">Detalle de la atención</h3>
+            <div id="d-origen-bloque" hidden>
+              <div class="origen-fila">
+                <div class="form-group" style="margin-bottom:0;"><label for="d-origen">Traer desde una atención ya registrada</label>
+                  <select id="d-origen"><option value="">Elegir atención…</option></select></div>
+                <button type="button" id="d-agregar-origen" class="btn-secondary">Agregar al detalle</button>
+              </div>
+              <span class="ayuda" id="d-origen-ayuda"></span>
+            </div>
+            <div class="tabla-scroll" id="d-lineas" style="margin-top:0.75rem;"></div>
+            <div class="acciones" style="margin-top:0.5rem;">
+              <button type="button" id="d-agregar-linea" class="btn-secondary btn-sm">+ Agregar línea</button>
+              <select id="d-catalogo" style="max-width:320px;" aria-label="Agregar del catálogo"><option value="">Agregar del catálogo de servicios…</option></select>
+            </div>
+
+            <div class="form-row" style="margin-top:1rem;">
+              <div class="form-group"><label for="d-iva-modo">IVA</label>
+                <select id="d-iva-modo">
+                  <option value="incluido">Los valores ya incluyen IVA</option>
+                  <option value="mas_iva">Sumar IVA a los valores</option>
+                  <option value="sin_iva">Sin IVA</option>
+                </select>
+              </div>
+            </div>
+            <div class="totales">
+              <div class="caja"><div class="lbl">Neto</div><div class="val" id="t-neto">$0</div></div>
+              <div class="caja"><div class="lbl" id="t-iva-lbl">IVA (19%)</div><div class="val" id="t-iva">$0</div></div>
+              <div class="caja total"><div class="lbl">Total</div><div class="val" id="t-total">$0</div></div>
+            </div>
+
+            <h3 class="seccion-titulo">Indicación médica <span style="font-weight:400;color:var(--color-text-muted);font-size:0.8rem;">(opcional)</span></h3>
+            <div class="form-row">
+              <div class="form-group"><label for="d-medico">Médico o centro que indica</label><input id="d-medico" /></div>
+            </div>
+            <div class="form-group"><label for="d-indicacion">Indicación / diagnóstico</label><textarea id="d-indicacion" rows="2"></textarea></div>
+
+            <h3 class="seccion-titulo">Quién paga <span style="font-weight:400;color:var(--color-text-muted);font-size:0.8rem;">(opcional, si paga un tercero)</span></h3>
+            <div class="form-row">
+              <div class="form-group"><label for="d-pagador">Nombre o razón social</label><input id="d-pagador" /></div>
+              <div class="form-group"><label for="d-pagador-rut">RUT</label><input id="d-pagador-rut" placeholder="12.345.678-9" maxlength="12" autocomplete="off" /></div>
+            </div>
+
+            <h3 class="seccion-titulo">Boleta física <span style="font-weight:400;color:var(--color-text-muted);font-size:0.8rem;">(opcional, si existe)</span></h3>
+            <div class="form-row">
+              <div class="form-group"><label for="d-boleta-n">N° de boleta</label><input id="d-boleta-n" autocomplete="off" /></div>
+              <div class="form-group"><label for="d-boleta-fecha">Fecha de la boleta</label><input type="date" id="d-boleta-fecha" /></div>
+              <div class="form-group"><label for="d-boleta-monto">Monto de la boleta ($)</label><input type="number" id="d-boleta-monto" min="0" step="1" /></div>
+            </div>
+            <div id="d-boleta-aviso"></div>
+
+            <div class="form-group"><label for="d-notas">Notas</label><textarea id="d-notas" rows="2"></textarea></div>
+
+            <p class="ayuda" style="margin-top:0;">
+              Es un documento <strong>informativo</strong>: no es boleta ni factura, no tiene validez tributaria y no cuenta en los pagos ni en los reportes.
+            </p>
+
+            <div class="acciones" id="d-acciones">
+              <button type="button" id="d-borrador">Guardar borrador</button>
+              <button type="button" id="d-emitir">Emitir e imprimir</button>
+              <button type="button" id="d-copia" class="btn-secondary" hidden>Imprimir copia</button>
+              <button type="button" id="d-duplicar" class="btn-secondary" hidden>Duplicar como borrador nuevo</button>
+              <button type="button" id="d-anular" class="btn-danger" hidden>Anular</button>
+              <button type="button" id="d-eliminar" class="btn-danger" hidden>Eliminar borrador</button>
+              <button type="button" id="d-cerrar" class="btn-secondary">Cerrar</button>
+            </div>
+            <p class="error-message" id="d-error"></p>
+          </form>
+        </div>
+
+        <!-- ═══════════ Listado ═══════════ -->
+        <div class="card" id="listado">
+          <div class="toolbar">
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+              <input type="search" id="f-texto" placeholder="Buscar por N°, paciente o RUT…" style="max-width:280px;" />
+              <select id="f-estado" style="max-width:180px;">
+                <option value="">Todos los estados</option>
+                <option value="borrador">Borrador</option>
+                <option value="emitido">Emitido</option>
+                <option value="anulado">Anulado</option>
+              </select>
+            </div>
+            <button type="button" id="btn-nuevo">+ Nuevo detalle</button>
+          </div>
+          <div class="tabla-scroll" id="lista"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/vendor/supabase.min.js"></script>
+  <script src="../assets/js/supabaseClient.js"></script>
+  <script src="../assets/js/formatos.js"></script>
+  <script src="../assets/js/layout.js"></script>
+  <script>
+    // Nombres de los procedimientos base (los propios de la clínica se leen de la base)
+    const NOMBRES_PROC = {
+      curacion: 'Curación', sonda: 'Sonda', retiro_puntos: 'Retiro de puntos', ileostomia: 'Ileostomía',
+      medicamentos: 'Administración de medicamentos', vacunacion: 'Vacunación', cuidados_generales: 'Cuidados generales',
+    };
+    // Qué dato clínico acompaña al nombre en el detalle (ej. "Vacunación (Influenza)")
+    const DATO_CORTO = { vacunacion: 'vacuna', medicamentos: 'farmaco', curacion: 'zona', retiro_puntos: 'zona', sonda: 'accion', ileostomia: 'accion' };
+    const ESTADOS_DETALLE = {
+      borrador: { label:'Borrador', badge:'badge-yellow' },
+      emitido:  { label:'Emitido',  badge:'badge-green' },
+      anulado:  { label:'Anulado',  badge:'badge-red' },
+    };
+
+    let pacientes = [], personal = [], servicios = [], zonas = [], tarifas = {}, detalles = [];
+    let atenciones = { visitas: [], turnos: [], planes: [] };      // atenciones registradas del paciente elegido
+    let lineas = [];                                               // líneas del detalle en edición
+    let origen = { visita_id: null, turno_id: null };
+    let soloLectura = false;
+    let logoImagen = null;
+    const g = (id) => document.getElementById(id);
+    const esc = htmlSeguro;
+
+    // ─── Utilidades ───
+    const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const dinero = (n) => Number(n || 0).toLocaleString('es-CL', { style:'currency', currency:'CLP', maximumFractionDigits:0 });
+    const diaCL = (s) => s ? new Date(String(s).slice(0, 10) + 'T00:00:00').toLocaleDateString('es-CL', { day:'2-digit', month:'2-digit', year:'numeric' }) : '';
+    const diaHoraCL = (iso) => new Date(iso).toLocaleString('es-CL', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:false });
+    const nombrePac = (p) => p ? `${p.nombre} ${p.apellido || ''}`.trim() : '';
+    const pacienteDe = (id) => pacientes.find(p => p.id === id);
+    const profesionalDe = (id) => { const p = personal.find(x => x.id === id); return p ? `${p.nombre} ${p.apellido || ''}`.trim() : ''; };
+    const nombreProc = (t) => NOMBRES_PROC[t] || t;
+    const ivaPct = () => Number((_configCache && _configCache.iva_pct) || IVA_PCT) || 19;
+
+    function totalesDe(items, modo, pct) {
+      const suma = items.reduce((s, i) => s + (Number(i.cantidad) || 0) * (Number(i.valor_unitario) || 0), 0);
+      if (modo === 'incluido') { const total = Math.round(suma); const neto = Math.round(total / (1 + pct / 100)); return { neto, iva: total - neto, total }; }
+      if (modo === 'mas_iva') { const neto = Math.round(suma); const iva = Math.round(neto * pct / 100); return { neto, iva, total: neto + iva }; }
+      return { neto: Math.round(suma), iva: 0, total: Math.round(suma) };
+    }
+
+    // ─── Datos ───
+    async function cargarBase() {
+      const [p, pe, s, z, t, ex, d] = await Promise.all([
+        supabaseClient.from('pacientes').select('id,nombre,apellido,dni,telefono,direccion').eq('activo', true).order('apellido'),
+        supabaseClient.from('personal').select('id,nombre,apellido'),
+        supabaseClient.from('servicios').select('id,nombre,precio').eq('activo', true).order('nombre'),
+        supabaseClient.from('zonas_traslado').select('id,nombre,km'),
+        supabaseClient.from('tarifas_procedimiento').select('codigo,valor'),
+        supabaseClient.from('procedimientos_extra').select('codigo,nombre'),
+        supabaseClient.from('detalles_atencion').select('*').order('numero', { ascending: false }).limit(500),
+      ]);
+      pacientes = p.data || []; personal = pe.data || []; servicios = s.data || []; zonas = z.data || [];
+      tarifas = {}; (t.data || []).forEach(r => { tarifas[r.codigo] = Number(r.valor) || 0; });
+      (ex.data || []).forEach(r => { NOMBRES_PROC[r.codigo] = r.nombre; });
+      if (d.error) return false;                              // falta v16
+      detalles = d.data || [];
+      return true;
+    }
+    async function recargarDetalles() {
+      const { data } = await supabaseClient.from('detalles_atencion').select('*').order('numero', { ascending: false }).limit(500);
+      detalles = data || [];
+      renderLista();
+    }
+    async function cargarLogo() {
+      try {
+        const resp = await fetch('../assets/img/logo.png');
+        const blob = await resp.blob();
+        logoImagen = await new Promise((resolve, reject) => {
+          const r = new FileReader(); r.onloadend = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(blob);
+        });
+      } catch (e) { logoImagen = null; }                      // sin logo, el documento sale igual
+    }
+
+    // ─── Listado ───
+    function renderLista() {
+      const texto = g('f-texto').value.trim().toLowerCase();
+      const estado = g('f-estado').value;
+      const lim = rutLimpio(texto);
+      const lista = detalles.filter(d => {
+        if (estado && d.estado !== estado) return false;
+        if (!texto) return true;
+        const p = pacienteDe(d.paciente_id);
+        return fmtNumero('DA', d.numero).toLowerCase().includes(texto)
+          || nombrePac(p).toLowerCase().includes(texto)
+          || (lim.length >= 3 && rutLimpio(p && p.dni).includes(lim));
+      });
+      if (!lista.length) { g('lista').innerHTML = '<p style="color:var(--color-text-muted);padding:1rem 0;">No hay detalles en esta vista. Crea el primero con “+ Nuevo detalle”.</p>'; return; }
+      g('lista').innerHTML = `<table><thead><tr><th>N°</th><th>Fecha</th><th>Paciente</th><th>Previsión</th><th>Boleta</th><th>Total</th><th>Estado</th><th></th></tr></thead><tbody>
+        ${lista.map(d => {
+          const est = ESTADOS_DETALLE[d.estado] || { label: d.estado, badge: 'badge-gray' };
+          const prev = d.prevision === 'fonasa' ? 'FONASA' : d.prevision === 'isapre' ? 'ISAPRE' + (d.isapre_nombre ? ' · ' + esc(d.isapre_nombre) : '') : '—';
+          return `<tr class="fila-click${d.estado === 'anulado' ? ' anulado' : ''}" data-id="${d.id}">
+            <td><strong>${esc(fmtNumero('DA', d.numero))}</strong></td>
+            <td>${esc(diaCL(d.fecha))}</td>
+            <td>${esc(nombrePac(pacienteDe(d.paciente_id)) || '—')}</td>
+            <td>${prev}</td>
+            <td>${d.boleta_numero ? esc(d.boleta_numero) : '<span style="color:var(--color-text-muted);">—</span>'}</td>
+            <td>${dinero(d.total)}</td>
+            <td><span class="badge ${est.badge}">${est.label}</span></td>
+            <td>${d.estado !== 'borrador' ? `<button type="button" class="btn-secondary btn-sm" data-imprimir="${d.id}">Imprimir</button>` : ''}</td></tr>`;
+        }).join('')}</tbody></table>`;
+      g('lista').querySelectorAll('tr[data-id]').forEach(tr => tr.addEventListener('click', (e) => {
+        if (e.target.closest('[data-imprimir]')) return;
+        abrirDetalle(detalles.find(d => d.id === tr.dataset.id));
+      }));
+      g('lista').querySelectorAll('[data-imprimir]').forEach(b => b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        imprimirDetalle(detalles.find(d => d.id === b.dataset.imprimir), true);
+      }));
+    }
+    g('f-texto').addEventListener('input', renderLista);
+    g('f-estado').addEventListener('change', renderLista);
+
+    // ─── Líneas del detalle ───
+    function renderLineas() {
+      const dis = soloLectura ? ' disabled' : '';
+      if (!lineas.length) {
+        g('d-lineas').innerHTML = '<p style="color:var(--color-text-muted);font-size:0.88rem;">Aún no hay líneas. Trae una atención registrada, agrega una del catálogo o escribe la primera a mano.</p>';
+        actualizarTotales();
+        return;
+      }
+      g('d-lineas').innerHTML = `<table class="lineas-tabla"><thead><tr>
+          <th style="width:120px;">Fecha</th><th>Descripción</th><th style="width:150px;">Profesional</th><th style="width:110px;">Lugar</th>
+          <th style="width:70px;">Cant.</th><th style="width:120px;">Valor unit. ($)</th><th style="width:110px;text-align:right;">Subtotal</th><th style="width:36px;"></th></tr></thead><tbody>
+        ${lineas.map((l, i) => `<tr>
+          <td><input type="date" data-i="${i}" data-k="fecha" value="${esc(l.fecha || '')}"${dis} /></td>
+          <td><input data-i="${i}" data-k="descripcion" value="${esc(l.descripcion || '')}" placeholder="Ej: Curación de herida"${dis} /></td>
+          <td><input data-i="${i}" data-k="profesional" value="${esc(l.profesional || '')}"${dis} /></td>
+          <td><select data-i="${i}" data-k="lugar"${dis}>
+            <option value=""${!l.lugar ? ' selected' : ''}>—</option>
+            <option${l.lugar === 'Domicilio' ? ' selected' : ''}>Domicilio</option>
+            <option${l.lugar === 'Clínica' ? ' selected' : ''}>Clínica</option></select></td>
+          <td><input type="number" min="0" step="any" data-i="${i}" data-k="cantidad" value="${esc(l.cantidad ?? 1)}"${dis} /></td>
+          <td><input type="number" min="0" step="1" data-i="${i}" data-k="valor_unitario" value="${esc(l.valor_unitario ?? 0)}"${dis} /></td>
+          <td class="sub" data-sub="${i}">${dinero((Number(l.cantidad) || 0) * (Number(l.valor_unitario) || 0))}</td>
+          <td>${soloLectura ? '' : `<button type="button" class="enlace-mini" data-quitar-linea="${i}" title="Quitar esta línea">✕</button>`}</td></tr>`).join('')}
+        </tbody></table>`;
+      actualizarTotales();
+    }
+    g('d-lineas').addEventListener('input', (e) => {
+      const el = e.target.closest('[data-k]');
+      if (!el) return;
+      const i = Number(el.dataset.i), k = el.dataset.k;
+      lineas[i][k] = el.value;
+      if (k === 'cantidad' || k === 'valor_unitario') {
+        const sub = g('d-lineas').querySelector(`[data-sub="${i}"]`);
+        if (sub) sub.textContent = dinero((Number(lineas[i].cantidad) || 0) * (Number(lineas[i].valor_unitario) || 0));
+        actualizarTotales();
+      }
+    });
+    g('d-lineas').addEventListener('change', (e) => {
+      const el = e.target.closest('select[data-k]');
+      if (el) lineas[Number(el.dataset.i)][el.dataset.k] = el.value;
+    });
+    g('d-lineas').addEventListener('click', (e) => {
+      const q = e.target.closest('[data-quitar-linea]');
+      if (!q || soloLectura) return;
+      lineas.splice(Number(q.dataset.quitarLinea), 1);
+      renderLineas();
+    });
+    function nuevaLinea(extra) {
+      return Object.assign({ fecha: g('d-fecha').value || ymd(new Date()), descripcion: '', profesional: '', lugar: '', cantidad: 1, valor_unitario: 0 }, extra || {});
+    }
+    g('d-agregar-linea').addEventListener('click', () => { if (soloLectura) return; lineas.push(nuevaLinea()); renderLineas(); });
+    g('d-catalogo').addEventListener('change', () => {
+      const s = servicios.find(x => x.id === g('d-catalogo').value);
+      g('d-catalogo').value = '';
+      if (!s || soloLectura) return;
+      lineas.push(nuevaLinea({ descripcion: s.nombre, valor_unitario: Number(s.precio) || 0 }));
+      renderLineas();
+    });
+
+    function actualizarTotales() {
+      const pct = ivaPct();
+      const modo = g('d-iva-modo').value;
+      const t = totalesDe(lineas, modo, pct);
+      g('t-neto').textContent = dinero(t.neto);
+      g('t-iva').textContent = dinero(t.iva);
+      g('t-total').textContent = dinero(t.total);
+      g('t-iva-lbl').textContent = modo === 'sin_iva' ? 'IVA (no aplica)' : `IVA (${pct}%)`;
+      actualizarAvisoBoleta(t.total);
+    }
+    function actualizarAvisoBoleta(total) {
+      const monto = g('d-boleta-monto').value;
+      const caja = g('d-boleta-aviso');
+      if (monto === '' || Number(monto) === total) { caja.innerHTML = ''; return; }
+      caja.innerHTML = `<div class="aviso-caja ambar">El monto de la boleta (${dinero(monto)}) no coincide con el total de este detalle (${dinero(total)}). Revisa las líneas o el IVA antes de emitir.</div>`;
+    }
+    g('d-iva-modo').addEventListener('change', actualizarTotales);
+    g('d-boleta-monto').addEventListener('input', actualizarTotales);
+    g('d-prevision').addEventListener('change', () => { g('d-isapre-grupo').hidden = g('d-prevision').value !== 'isapre'; });
+
+    // ─── Traer una atención ya registrada (visita domiciliaria o turno de la agenda) ───
+    async function cargarAtenciones(pacienteId) {
+      atenciones = { visitas: [], turnos: [], planes: [] };
+      g('d-origen').innerHTML = '<option value="">Elegir atención…</option>';
+      g('d-origen-bloque').hidden = !pacienteId;
+      if (!pacienteId) return;
+      const [v, t, p] = await Promise.all([
+        supabaseClient.from('visitas_cuidado').select('*').eq('paciente_id', pacienteId).eq('anulada', false).order('fecha_hora', { ascending: false }).limit(40),
+        supabaseClient.from('turnos').select('id,fecha_hora,estado,servicio_id,personal_id,duracion_min').eq('paciente_id', pacienteId).order('fecha_hora', { ascending: false }).limit(40),
+        supabaseClient.from('planes_cuidado').select('id,indicacion,medico_indica,pagador_tipo,pagador_nombre,pagador_rut,nombre').eq('paciente_id', pacienteId),
+      ]);
+      atenciones.visitas = (v.data || []).filter(x => x.estado !== 'cancelada');
+      atenciones.turnos = (t.data || []).filter(x => x.estado !== 'cancelado');
+      atenciones.planes = p.data || [];
+      const op = [];
+      atenciones.visitas.forEach(x => {
+        const procs = (x.procedimientos || []).map(pr => nombreProc(pr.tipo)).join(', ');
+        const total = (Number(x.valor_procedimientos) || 0) + (Number(x.valor_traslado) || 0);
+        op.push({ f: x.fecha_hora, html: `<option value="v:${x.id}">${esc(diaHoraCL(x.fecha_hora))} · Visita ${x.lugar === 'domicilio' ? 'a domicilio' : 'en la clínica'} · ${esc(procs)} · ${dinero(total)}</option>` });
+      });
+      atenciones.turnos.forEach(x => {
+        const s = servicios.find(y => y.id === x.servicio_id);
+        op.push({ f: x.fecha_hora, html: `<option value="t:${x.id}">${esc(diaHoraCL(x.fecha_hora))} · Agenda · ${esc(s ? s.nombre : 'Atención')}${s && s.precio != null ? ' · ' + dinero(s.precio) : ''}</option>` });
+      });
+      op.sort((a, b) => new Date(b.f) - new Date(a.f));
+      g('d-origen').innerHTML = '<option value="">Elegir atención…</option>' + op.map(o => o.html).join('');
+      g('d-origen-ayuda').textContent = op.length
+        ? 'Se llenan las líneas con lo que se registró. Puedes corregirlas o agregar más.'
+        : 'Este paciente aún no tiene atenciones registradas: escribe las líneas a mano o agrégalas del catálogo.';
+    }
+
+    // Una línea por procedimiento si los valores coinciden con las tarifas; si no, una sola línea con el valor guardado
+    function lineasDeVisita(v) {
+      const fecha = ymd(new Date(v.fecha_hora));
+      const prof = profesionalDe(v.personal_id);
+      const lugar = v.lugar === 'domicilio' ? 'Domicilio' : 'Clínica';
+      const procs = v.procedimientos || [];
+      const etiqueta = (pr) => {
+        const k = DATO_CORTO[pr.tipo];
+        const extra = k && pr.datos && pr.datos[k] ? ` (${pr.datos[k]})` : '';
+        return nombreProc(pr.tipo) + extra;
+      };
+      const suma = procs.reduce((s, pr) => s + (tarifas[pr.tipo] || 0), 0);
+      const guardado = Number(v.valor_procedimientos) || 0;
+      const salida = [];
+      if (procs.length && Math.round(suma) === Math.round(guardado)) {
+        procs.forEach(pr => salida.push(nuevaLinea({ fecha, descripcion: etiqueta(pr), profesional: prof, lugar, valor_unitario: tarifas[pr.tipo] || 0 })));
+      } else {
+        salida.push(nuevaLinea({ fecha, descripcion: procs.map(etiqueta).join(' + ') || 'Atención domiciliaria', profesional: prof, lugar, valor_unitario: guardado }));
+      }
+      if (Number(v.valor_traslado) > 0) {
+        const z = zonas.find(x => x.id === v.zona_id);
+        salida.push(nuevaLinea({ fecha, descripcion: `Traslado${z ? ' a ' + z.nombre + (z.km != null ? ' (' + Number(z.km) + ' km)' : '') : ''}`,
+          profesional: prof, lugar: 'Domicilio', valor_unitario: Number(v.valor_traslado) }));
+      }
+      return salida;
+    }
+    function lineaDeTurno(t) {
+      const s = servicios.find(y => y.id === t.servicio_id);
+      return nuevaLinea({ fecha: ymd(new Date(t.fecha_hora)), descripcion: s ? s.nombre : 'Atención', profesional: profesionalDe(t.personal_id),
+        lugar: 'Clínica', valor_unitario: s ? Number(s.precio) || 0 : 0 });
+    }
+    g('d-agregar-origen').addEventListener('click', () => {
+      if (soloLectura) return;
+      const v = g('d-origen').value;
+      if (!v) return;
+      const [tipo, id] = v.split(':');
+      if (tipo === 'v') {
+        const vis = atenciones.visitas.find(x => x.id === id);
+        if (!vis) return;
+        lineas.push(...lineasDeVisita(vis));
+        if (!origen.visita_id && !origen.turno_id) origen.visita_id = vis.id;
+        // La indicación médica y quién paga vienen del plan, si lo tiene y aún no se escribieron
+        const plan = atenciones.planes.find(x => x.id === vis.plan_id);
+        if (plan) {
+          if (!g('d-medico').value && plan.medico_indica) g('d-medico').value = plan.medico_indica;
+          if (!g('d-indicacion').value && plan.indicacion) g('d-indicacion').value = plan.indicacion;
+          if (plan.pagador_tipo === 'tercero' && !g('d-pagador').value) {
+            g('d-pagador').value = plan.pagador_nombre || ''; g('d-pagador-rut').value = plan.pagador_rut || '';
+          }
+        }
+      } else {
+        const t = atenciones.turnos.find(x => x.id === id);
+        if (!t) return;
+        lineas.push(lineaDeTurno(t));
+        if (!origen.visita_id && !origen.turno_id) origen.turno_id = t.id;
+      }
+      g('d-origen').value = '';
+      renderLineas();
+    });
+    g('d-paciente').addEventListener('change', () => { cargarAtenciones(g('d-paciente').value); });
+
+    // ─── Formulario ───
+    function aplicarSoloLectura(si) {
+      soloLectura = si;
+      g('d-form').querySelectorAll('input, select, textarea').forEach(el => { el.disabled = si; });
+      g('d-agregar-linea').hidden = si;
+      g('d-catalogo').hidden = si;
+      g('d-origen-bloque').hidden = si || !g('d-paciente').value;
+    }
+    function leerFormulario() {
+      const val = (id) => g(id).value.trim() || null;
+      const items = lineas.map(l => ({
+        fecha: l.fecha || null, descripcion: String(l.descripcion || '').trim(), profesional: String(l.profesional || '').trim() || null,
+        lugar: l.lugar || null, cantidad: Number(l.cantidad) || 0, valor_unitario: Math.round(Number(l.valor_unitario) || 0),
+      }));
+      const modo = g('d-iva-modo').value, pct = ivaPct();
+      const t = totalesDe(items, modo, pct);
+      const prev = g('d-prevision').value || null;
+      return {
+        paciente_id: g('d-paciente').value, fecha: g('d-fecha').value || ymd(new Date()),
+        visita_id: origen.visita_id, turno_id: origen.turno_id,
+        items, iva_modo: modo, iva_pct: pct, neto: t.neto, iva: t.iva, total: t.total,
+        prevision: prev, isapre_nombre: prev === 'isapre' ? val('d-isapre') : null,
+        medico_indica: val('d-medico'), indicacion: val('d-indicacion'),
+        pagador_nombre: val('d-pagador'), pagador_rut: val('d-pagador-rut'),
+        boleta_numero: val('d-boleta-n'), boleta_fecha: g('d-boleta-fecha').value || null,
+        boleta_monto: g('d-boleta-monto').value !== '' ? Math.round(Number(g('d-boleta-monto').value)) : null,
+        notas: val('d-notas'), actualizado_en: new Date().toISOString(),
+      };
+    }
+    // Validaciones comunes; devuelve texto de error o null
+    function validar(datos) {
+      if (!datos.paciente_id) return 'Elige el paciente.';
+      if (datos.prevision === 'isapre' && !datos.isapre_nombre) return 'Indica cuál ISAPRE es.';
+      if (datos.pagador_rut && !rutValido(datos.pagador_rut)) return 'El RUT de quien paga no es válido: revisa el dígito verificador.';
+      return null;
+    }
+
+    function mostrarFormulario(d, opciones) {
+      opciones = opciones || {};
+      g('form-card').hidden = false;
+      g('d-error').textContent = '';
+      g('estado-banner').innerHTML = '';
+      const nuevo = !d;
+      const base = d || {};
+      g('form-titulo').textContent = nuevo ? 'Nuevo detalle de atención' : `Detalle de atención ${fmtNumero('DA', d.numero)}`;
+      g('d-id').value = d && !opciones.duplicado ? d.id : '';
+      g('d-paciente').value = base.paciente_id || opciones.pacienteId || '';
+      g('d-fecha').value = opciones.duplicado || nuevo ? ymd(new Date()) : (base.fecha || ymd(new Date()));
+      g('d-prevision').value = base.prevision || '';
+      g('d-isapre').value = base.isapre_nombre || '';
+      g('d-isapre-grupo').hidden = g('d-prevision').value !== 'isapre';
+      g('d-iva-modo').value = base.iva_modo || 'incluido';
+      g('d-medico').value = base.medico_indica || '';
+      g('d-indicacion').value = base.indicacion || '';
+      g('d-pagador').value = base.pagador_nombre || '';
+      g('d-pagador-rut').value = base.pagador_rut || '';
+      const sinBoleta = opciones.duplicado || nuevo;              // la boleta física es de cada atención: no se copia
+      g('d-boleta-n').value = sinBoleta ? '' : (base.boleta_numero || '');
+      g('d-boleta-fecha').value = sinBoleta ? '' : (base.boleta_fecha || '');
+      g('d-boleta-monto').value = sinBoleta || base.boleta_monto == null ? '' : base.boleta_monto;
+      g('d-notas').value = base.notas || '';
+      lineas = (base.items || []).map(l => Object.assign({}, l));
+      origen = { visita_id: opciones.duplicado ? null : (base.visita_id || null), turno_id: opciones.duplicado ? null : (base.turno_id || null) };
+
+      const estado = nuevo || opciones.duplicado ? 'borrador' : d.estado;
+      const editable = estado === 'borrador';
+      aplicarSoloLectura(!editable);
+      renderLineas();
+      cargarAtenciones(editable ? g('d-paciente').value : '');
+
+      g('d-borrador').hidden = !editable;
+      g('d-emitir').hidden = !editable;
+      g('d-eliminar').hidden = !(editable && g('d-id').value);
+      g('d-copia').hidden = editable;
+      g('d-duplicar').hidden = editable;
+      g('d-anular').hidden = estado !== 'emitido';
+      if (estado === 'emitido') {
+        g('estado-banner').innerHTML = `<div class="aviso-caja verde">Emitido el ${esc(diaHoraCL(d.emitido_en || d.actualizado_en))}. Ya no se puede modificar: puedes imprimir una copia, duplicarlo o anularlo.</div>`;
+      } else if (estado === 'anulado') {
+        g('estado-banner').innerHTML = `<div class="aviso-caja rojo">Anulado${d.anulado_en ? ' el ' + esc(diaHoraCL(d.anulado_en)) : ''}. Motivo: ${esc(d.motivo_anulacion || '—')}. Queda registrado y no se puede modificar.</div>`;
+      }
+      g('form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function abrirNuevo(opciones) { mostrarFormulario(null, opciones); }
+    function abrirDetalle(d) { if (d) mostrarFormulario(d); }
+    function cerrarFormulario() { g('form-card').hidden = true; }
+
+    g('btn-nuevo').addEventListener('click', () => abrirNuevo());
+    g('d-cerrar').addEventListener('click', cerrarFormulario);
+    g('d-duplicar').addEventListener('click', () => {
+      const d = detalles.find(x => x.id === g('d-id').value);
+      if (d) mostrarFormulario(d, { duplicado: true });
+    });
+    g('d-copia').addEventListener('click', () => {
+      const d = detalles.find(x => x.id === g('d-id').value);
+      if (d) imprimirDetalle(d, true);
+    });
+
+    // Guarda como borrador (crea o actualiza) y devuelve la fila guardada, o null si hubo error
+    async function guardarBorrador(datos) {
+      const id = g('d-id').value;
+      const r = id
+        ? await supabaseClient.from('detalles_atencion').update(datos).eq('id', id).select('*').single()
+        : await supabaseClient.from('detalles_atencion').insert(Object.assign({ estado: 'borrador' }, datos)).select('*').single();
+      if (r.error) { g('d-error').textContent = 'No se pudo guardar: ' + r.error.message; return null; }
+      g('d-id').value = r.data.id;
+      return r.data;
+    }
+    g('d-borrador').addEventListener('click', async () => {
+      g('d-error').textContent = '';
+      const datos = leerFormulario();
+      const err = validar(datos);
+      if (err) { g('d-error').textContent = err; return; }
+      const btn = g('d-borrador'); btn.disabled = true;
+      try {
+        const fila = await guardarBorrador(datos);
+        if (!fila) return;
+        await recargarDetalles();
+        g('form-titulo').textContent = `Detalle de atención ${fmtNumero('DA', fila.numero)} (borrador)`;
+        g('d-eliminar').hidden = false;
+        g('d-error').textContent = '';
+        g('estado-banner').innerHTML = '<div class="aviso-caja verde">Borrador guardado. Puedes seguir editándolo o emitirlo.</div>';
+      } finally { btn.disabled = false; }
+    });
+
+    // Emitir: queda bloqueado, con su número, y se abre la impresión (el original, sin marca de copia)
+    g('d-emitir').addEventListener('click', async () => {
+      g('d-error').textContent = '';
+      const datos = leerFormulario();
+      const err = validar(datos);
+      if (err) { g('d-error').textContent = err; return; }
+      if (!datos.items.length || datos.items.some(i => !i.descripcion)) { g('d-error').textContent = 'Cada línea necesita una descripción. Agrega al menos una.'; return; }
+      if (datos.total === 0 && !confirm('El total es $0. ¿Emitir el detalle igual?')) return;
+      if (!confirm('Al emitir, el detalle recibe su número y ya no se podrá modificar (solo anular). ¿Emitir?')) return;
+      // La ventana de impresión se abre YA (dentro del clic) para que el navegador no la bloquee
+      let ventana = window.open('', '_blank');
+      if (!ventana && !confirm('El navegador bloqueó la ventana de impresión. ¿Emitir igualmente? Después podrás imprimirlo como copia.')) return;
+      const btn = g('d-emitir'); btn.disabled = true;
+      try {
+        const fila = await guardarBorrador(datos);
+        if (!fila) { if (ventana) ventana.close(); return; }
+        const r = await supabaseClient.from('detalles_atencion').update({ estado: 'emitido', actualizado_en: new Date().toISOString() })
+          .eq('id', fila.id).select('*').single();
+        if (r.error) { g('d-error').textContent = 'No se pudo emitir: ' + r.error.message; if (ventana) ventana.close(); return; }
+        await recargarDetalles();
+        if (ventana) await imprimirDetalle(r.data, false, ventana);
+        mostrarFormulario(r.data);
+      } finally { btn.disabled = false; }
+    });
+
+    g('d-anular').addEventListener('click', async () => {
+      const id = g('d-id').value;
+      if (!id) return;
+      const motivo = (prompt('El detalle no se borra: queda anulado y registrado.\n\nMotivo de la anulación:') || '').trim();
+      if (!motivo) return;
+      const { data, error } = await supabaseClient.from('detalles_atencion')
+        .update({ estado: 'anulado', motivo_anulacion: motivo, anulado_en: new Date().toISOString(), actualizado_en: new Date().toISOString() })
+        .eq('id', id).select('*').single();
+      if (error) { g('d-error').textContent = 'No se pudo anular: ' + error.message; return; }
+      await recargarDetalles();
+      mostrarFormulario(data);
+    });
+    g('d-eliminar').addEventListener('click', async () => {
+      const id = g('d-id').value;
+      if (!id || !confirm('¿Eliminar este borrador? Solo los borradores se pueden eliminar.')) return;
+      const { error } = await supabaseClient.from('detalles_atencion').delete().eq('id', id);
+      if (error) { g('d-error').textContent = 'No se pudo eliminar: ' + error.message; return; }
+      await recargarDetalles();
+      cerrarFormulario();
+    });
+
+    // ─── Impresión (ventana de impresión, igual que las cotizaciones) ───
+    async function imprimirDetalle(d, esCopia, ventanaAbierta) {
+      if (!d) return;
+      const win = ventanaAbierta || window.open('', '_blank');
+      if (!win) { alert('El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes para este sitio.'); return; }
+      win.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Generando…</title></head><body style="font-family:sans-serif;padding:2rem;color:#2d7558;">Generando documento…</body></html>');
+      const cfg = await getConfig();
+      const pac = pacienteDe(d.paciente_id) || {};
+      const marca = d.estado === 'anulado' ? 'ANULADO' : (esCopia ? 'COPIA' : '');
+      const items = d.items || [];
+      const fila = (l) => `<tr>
+        <td>${esc(diaCL(l.fecha))}</td><td>${esc(l.descripcion)}</td><td>${esc(l.profesional || '')}</td><td>${esc(l.lugar || '')}</td>
+        <td style="text-align:center;">${esc(l.cantidad)}</td>
+        <td style="text-align:right;">${dinero(l.valor_unitario)}</td>
+        <td style="text-align:right;">${dinero((Number(l.cantidad) || 0) * (Number(l.valor_unitario) || 0))}</td></tr>`;
+      const dato = (lbl, v) => v ? `<div><span class="lbl">${lbl}:</span> ${esc(v)}</div>` : '';
+      const prev = d.prevision === 'fonasa' ? 'FONASA' : d.prevision === 'isapre' ? 'ISAPRE' + (d.isapre_nombre ? ' · ' + d.isapre_nombre : '') : '';
+      const pct = Number(d.iva_pct) || 19;
+      const empresa = [
+        cfg.razon_social ? `${esc(cfg.razon_social)}${cfg.rut ? ' · RUT ' + esc(cfg.rut) : ''}` : '',
+        cfg.direccion ? esc(cfg.direccion) : '',
+        [cfg.correo ? esc(cfg.correo) : '', cfg.telefono ? esc(cfg.telefono) : '', cfg.instagram ? esc(cfg.instagram) : ''].filter(Boolean).join(' · '),
+      ].filter(Boolean).join('<br>');
+      const totales = d.iva_modo === 'sin_iva'
+        ? `<div class="tot">Total: ${dinero(d.total)}</div><div class="nota-iva">Sin IVA.</div>`
+        : `<div class="subtot">Neto: ${dinero(d.neto)}<br>IVA (${pct}%): ${dinero(d.iva)}</div>
+           <div class="tot">Total: ${dinero(d.total)}</div>
+           <div class="nota-iva">${d.iva_modo === 'incluido' ? 'Los valores de las líneas incluyen IVA.' : 'Al valor de las líneas se suma el IVA.'}</div>`;
+      const boleta = d.boleta_numero || d.boleta_fecha || d.boleta_monto != null
+        ? `<div class="panel"><h2>Boleta física asociada</h2><div class="grid">
+            ${dato('N° de boleta', d.boleta_numero)}${dato('Fecha', d.boleta_fecha ? diaCL(d.boleta_fecha) : '')}${dato('Monto', d.boleta_monto != null ? dinero(d.boleta_monto) : '')}
+          </div></div>` : '';
+      const medica = d.medico_indica || d.indicacion
+        ? `<div class="panel"><h2>Indicación médica</h2><div class="grid">${dato('Médico o centro', d.medico_indica)}</div>
+            ${d.indicacion ? `<div style="margin-top:6px;font-size:13px;">${esc(d.indicacion)}</div>` : ''}</div>` : '';
+      const pagador = d.pagador_nombre ? `<div class="panel"><h2>Pagado por</h2><div class="grid">${dato('Nombre', d.pagador_nombre)}${dato('RUT', d.pagador_rut)}</div></div>` : '';
+      const logoTag = logoImagen ? `<img src="${logoImagen}" alt="" style="width:78px;height:auto;border-radius:8px;" />` : '';
+
+      const doc = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<title>Detalle de atención ${esc(fmtNumero('DA', d.numero))} - ${esc(nombrePac(pac))}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1a2320; margin: 0; padding: 32px; font-size: 14px; position: relative; }
+  .head { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid #c5a44e; padding-bottom: 16px; margin-bottom: 8px; }
+  .head .brand { font-size: 24px; font-weight: 700; color: #2d7558; letter-spacing: 1px; }
+  .head .empresa { font-size: 12px; color: #555; line-height: 1.5; margin-top: 4px; }
+  .doc-title { display: flex; justify-content: space-between; align-items: baseline; margin: 18px 0 16px; }
+  .doc-title h1 { font-size: 20px; color: #2d7558; margin: 0; }
+  .doc-title .fecha { font-size: 13px; color: #555; }
+  .panel { background: #f4f8f6; border: 1px solid #dce8e3; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #2d7558; margin: 0 0 8px; }
+  .panel .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; font-size: 13px; }
+  .panel .lbl { color: #7a8a86; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { border: 1px solid #ccc; padding: 7px 9px; text-align: left; }
+  th { background: #e8f5ef; color: #2d7558; }
+  .subtot { text-align: right; font-size: 14px; margin-top: 12px; }
+  .tot { text-align: right; font-size: 18px; font-weight: 700; color: #2d7558; margin-top: 8px; }
+  .nota-iva { text-align: right; font-size: 11px; color: #777; margin-top: 2px; }
+  .notas { margin-top: 14px; font-size: 13px; color: #555; }
+  .leyenda { margin-top: 22px; padding: 10px 14px; border: 1px solid #c5a44e; border-radius: 6px; font-size: 12px; color: #555; background: #fbf7ea; line-height: 1.5; }
+  .pie { margin-top: 24px; font-size: 11px; color: #999; text-align: center; border-top: 1px solid #eee; padding-top: 10px; }
+  .marca { position: fixed; top: 38%; left: 0; right: 0; text-align: center; font-size: 110px; font-weight: 700; letter-spacing: 12px;
+    color: rgba(192, 82, 74, 0.16); transform: rotate(-24deg); pointer-events: none; }
+  @media print { body { padding: 0; } .panel, th, .leyenda { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style></head>
+<body>
+  ${marca ? `<div class="marca">${marca}</div>` : ''}
+  <div class="head">
+    ${logoTag}
+    <div>
+      <div class="brand">${esc(cfg.razon_social || 'AIVIMED')}</div>
+      <div class="empresa">${empresa}</div>
+    </div>
+  </div>
+
+  <div class="doc-title">
+    <h1>Detalle de atención ${esc(fmtNumero('DA', d.numero))}</h1>
+    <div class="fecha"><strong>Fecha:</strong> ${esc(diaCL(d.fecha))}</div>
+  </div>
+
+  <div class="panel">
+    <h2>Datos del paciente</h2>
+    <div class="grid">
+      ${dato('Nombre', nombrePac(pac))}${dato('RUT', pac.dni)}${dato('Teléfono', pac.telefono)}${dato('Dirección', pac.direccion)}${dato('Previsión', prev)}
+    </div>
+  </div>
+  ${medica}${pagador}
+
+  <table>
+    <thead><tr><th>Fecha</th><th>Descripción de la atención</th><th>Profesional</th><th>Lugar</th><th style="text-align:center;">Cant.</th><th style="text-align:right;">Valor unit.</th><th style="text-align:right;">Subtotal</th></tr></thead>
+    <tbody>${items.map(fila).join('') || '<tr><td colspan="7">Sin líneas</td></tr>'}</tbody>
+  </table>
+  ${totales}
+  ${boleta}
+  ${d.notas ? `<div class="notas"><strong>Notas:</strong> ${esc(d.notas)}</div>` : ''}
+
+  <div class="leyenda">
+    <strong>Documento informativo.</strong> Este detalle no es boleta ni factura y no tiene validez tributaria.
+    ${d.boleta_numero ? `Complementa la boleta N° ${esc(d.boleta_numero)}.` : 'Detalla las prestaciones otorgadas por el centro.'}
+  </div>
+  <div class="pie">${esc(cfg.razon_social || '')}${cfg.correo ? ' — ' + esc(cfg.correo) : ''} · Documento generado el ${esc(diaCL(ymd(new Date())))}${marca === 'COPIA' ? ' · Copia' : ''}</div>
+  <script>window.onload = function() { setTimeout(function(){ window.print(); }, 300); };<\/script>
+</body></html>`;
+      win.document.open();
+      win.document.write(doc);
+      win.document.close();
+    }
+
+    // ─── Inicio ───
+    (async () => {
+      const s = await initLayout('detalles');
+      if (!s) return;
+      await getConfig();                                   // trae el IVA y los datos del centro
+      const ok = await cargarBase();
+      if (!ok) { g('aviso-v16').hidden = false; g('listado').hidden = true; g('btn-nuevo').hidden = true; return; }
+      g('d-paciente').innerHTML = '<option value="">Seleccionar…</option>'
+        + pacientes.map(p => `<option value="${p.id}">${esc(p.apellido + ', ' + p.nombre)}${p.dni ? ' · ' + esc(p.dni) : ''}</option>`).join('');
+      g('d-catalogo').innerHTML = '<option value="">Agregar del catálogo de servicios…</option>'
+        + servicios.map(sv => `<option value="${sv.id}">${esc(sv.nombre)}${sv.precio != null ? ' · ' + dinero(sv.precio) : ''}</option>`).join('');
+      cargarLogo();
+      renderLista();
+      const pac = new URLSearchParams(location.search).get('paciente');
+      if (pac) abrirNuevo({ pacienteId: pac });
+    })();
+  </script>
+</body>
+</html>

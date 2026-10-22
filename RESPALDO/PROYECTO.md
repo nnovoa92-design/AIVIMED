@@ -92,6 +92,13 @@ Uso **operacional interno** (dueñas/equipo). Aparte tiene páginas públicas pa
 
 18. `v15_planes_comunas_fotos.sql` — `zonas_traslado.km`, `tipos_plan`, `procedimientos_extra`, `planes_cuidado.(tipo_plan_id,nombre,descripcion)`, 12 comunas de la Provincia de Concepción y bucket privado `cuidados` (fotos).
 
+19. `v16_detalle_atencion.sql` — `detalles_atencion` (documento informativo para reembolsos; correlativo DA-0001 por clínica; borrador/emitido/anulado; lo emitido no se modifica ni se borra).
+
+### Detalle de atención (2026-10)
+- Pantalla `pages/detalles.html` (menú Administración). NO es boleta ni factura, no tiene validez tributaria y NO cuenta en pagos ni reportes (tabla propia).
+- Con IVA (por defecto "los valores ya incluyen IVA"; también "sumar IVA" o "sin IVA"), previsión FONASA/ISAPRE (+ cuál), indicación médica, quién paga y datos opcionales de la boleta física con aviso si el monto no coincide.
+- Se arma desde una visita domiciliaria o un turno de la agenda, o a mano. Emitir bloquea; copias con marca COPIA; anulaciones con motivo.
+
 ### Módulo Atención domiciliaria (2026-10)
 - v15: "¿Requiere plan de cuidado?" Sí/No; tipos de plan en catálogo (sesiones + en qué consiste); comunas con km; procedimientos propios; fotos por procedimiento en bucket privado `cuidados` (ruta `<org>/<visita>/<procedimiento>/…`, URL firmada).
 - Pantalla `pages/domiciliaria.html`: Visitas · Planes de cuidado · Tarifas (valor por procedimiento + zonas de traslado según lejanía).

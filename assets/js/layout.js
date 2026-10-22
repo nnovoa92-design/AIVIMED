@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { key: 'stock',          icon: '⊡',  label: 'Stock',             href: 'stock.html' },
   { section: 'Administración' },
   { key: 'pagos',          icon: '$',  label: 'Pagos',             href: 'pagos.html' },
+  { key: 'detalles',       icon: '▣',  label: 'Detalle de atención', href: 'detalles.html' },
   { key: 'reportes',       icon: '◎',  label: 'Torre de Control',  href: 'reportes.html' },
   { key: 'configuracion',  icon: '⚙',  label: 'Configuración',     href: 'configuracion.html' },
 ];
