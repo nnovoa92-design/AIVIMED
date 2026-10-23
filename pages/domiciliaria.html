@@ -297,6 +297,7 @@
             <div>
               <button type="submit" id="v-guardar">Guardar visita</button>
               <button type="button" id="v-cancelar" class="btn-secondary">Cerrar</button>
+              <button type="button" id="v-detalle" class="btn-secondary" hidden>Generar detalle de atención</button>
               <button type="button" id="v-anular" class="btn-danger" hidden>Anular visita</button>
             </div>
             <p class="error-message" id="v-error"></p>
@@ -1423,6 +1424,7 @@
         g('v-val-tras').value = Number(visita.valor_traslado) || 0;
         valoresEditados = { proc: true, tras: true };       // se respetan los valores guardados
         g('v-anular').hidden = !!visita.anulada;
+        g('v-detalle').hidden = !!visita.anulada;           // el detalle se genera de una visita ya guardada
         g('v-guardar').hidden = !!visita.anulada;
       } else {
         visitaIdActual = nuevoUuid();
@@ -1443,6 +1445,7 @@
           if (p && p.direccion) g('v-direccion').value = p.direccion;
         }
         g('v-anular').hidden = true;
+        g('v-detalle').hidden = true;
         g('v-guardar').hidden = false;
       }
       actualizarDomVisita(); mostrarCamposProcs(); actualizarResumenProcs('vp');
@@ -1486,6 +1489,11 @@
     g('v-val-tras').addEventListener('input', () => { valoresEditados.tras = true; actualizarTotal(); });
     g('v-recalcular').addEventListener('click', () => { valoresEditados = { proc: false, tras: false }; recalcularValores(true); });
     g('v-cancelar').addEventListener('click', cerrarVisita);
+    // Genera el "Detalle de atención" de esta visita (se abre ya armado en el menú Administración)
+    g('v-detalle').addEventListener('click', () => {
+      const id = g('v-id').value;
+      if (id) location.href = 'detalles.html?visita=' + encodeURIComponent(id);
+    });
 
     // Fotos: subir al elegir archivos y quitar las recién agregadas
     g('v-campos').addEventListener('change', (e) => {

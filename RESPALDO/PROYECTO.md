@@ -94,7 +94,10 @@ Uso **operacional interno** (dueñas/equipo). Aparte tiene páginas públicas pa
 
 19. `v16_detalle_atencion.sql` — `detalles_atencion` (documento informativo para reembolsos; correlativo DA-0001 por clínica; borrador/emitido/anulado; lo emitido no se modifica ni se borra).
 
+20. `v17_detalle_adjuntos.sql` — `detalle_adjuntos` (receta, orden médica, foto de la boleta…; archivos en el bucket privado `cuidados`, carpeta `<org>/detalles/<detalle>/`).
+
 ### Detalle de atención (2026-10)
+- Fase 2: se genera desde Agenda (turno), Visita domiciliaria y Pagos (`detalles.html?turno|visita|pago=ID`); se envía por WhatsApp o correo (resumen en texto, sin adjuntar el PDF); admite adjuntos incluso después de emitir.
 - Pantalla `pages/detalles.html` (menú Administración). NO es boleta ni factura, no tiene validez tributaria y NO cuenta en pagos ni reportes (tabla propia).
 - Con IVA (por defecto "los valores ya incluyen IVA"; también "sumar IVA" o "sin IVA"), previsión FONASA/ISAPRE (+ cuál), indicación médica, quién paga y datos opcionales de la boleta física con aviso si el monto no coincide.
 - Se arma desde una visita domiciliaria o un turno de la agenda, o a mano. Emitir bloquea; copias con marca COPIA; anulaciones con motivo.

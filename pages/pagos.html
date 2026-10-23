@@ -127,8 +127,13 @@
         <td>${DOCS[p.tipo_documento] ?? '–'}</td>
         <td>${p.con_iva ? '<span class="badge badge-green">Sí</span>' : '<span class="badge badge-gray">No</span>'}</td>
         <td>${p.notas ?? '–'}</td>
-        <td><button class="btn-danger btn-sm del-btn" data-id="${p.id}">Eliminar</button></td>
+        <td style="white-space:nowrap;">
+          <button class="btn-secondary btn-sm det-btn" data-id="${p.id}" title="Genera el detalle de atención de este pago">Detalle</button>
+          <button class="btn-danger btn-sm del-btn" data-id="${p.id}">Eliminar</button></td>
       </tr>`).join('');
+      tbody.querySelectorAll('.det-btn').forEach(b => b.addEventListener('click', () => {
+        location.href = 'detalles.html?pago=' + encodeURIComponent(b.dataset.id);
+      }));
       tbody.querySelectorAll('.del-btn').forEach(b => b.addEventListener('click', async () => {
         if (!confirm('¿Eliminar este pago?')) return;
         await supabaseClient.from('pagos').delete().eq('id', b.dataset.id);

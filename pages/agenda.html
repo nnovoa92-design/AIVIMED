@@ -143,6 +143,7 @@
             <div class="form-group"><label>Notas</label><textarea id="notas" rows="2"></textarea></div>
             <button type="submit" id="submit-btn">Guardar turno</button>
             <button type="button" id="cancel-btn" class="btn-secondary">Cancelar</button>
+            <button type="button" id="detalle-btn" class="btn-secondary" style="display:none;">Detalle de atención</button>
             <button type="button" id="delete-btn" class="btn-danger" style="display:none;">Eliminar</button>
             <p class="error-message" id="form-error"></p>
           </form>
@@ -504,6 +505,7 @@
         document.getElementById('form-title').textContent='Editar turno';
         document.getElementById('submit-btn').textContent='Actualizar';
         document.getElementById('delete-btn').style.display='inline-block';
+        document.getElementById('detalle-btn').style.display='inline-flex';
       } else {
         ['turno-id','paciente_id','servicio_id','personal_id','notas'].forEach(f=>{const el=document.getElementById(f);if(el)el.value='';});
         document.getElementById('fecha_hora').value=slotDateTime||'';
@@ -512,6 +514,7 @@
         document.getElementById('form-title').textContent='Nuevo turno';
         document.getElementById('submit-btn').textContent='Guardar turno';
         document.getElementById('delete-btn').style.display='none';
+        document.getElementById('detalle-btn').style.display='none';
       }
       document.getElementById('form-error').textContent='';
       // Reconocimiento por RUT: ficha del paciente elegido, o casilla de RUT limpia
@@ -758,6 +761,11 @@
     document.getElementById('btn-hoy').addEventListener('click',()=>{currentDate=new Date();currentDate.setHours(0,0,0,0);loadTurnos();});
     document.getElementById('btn-nuevo').addEventListener('click',()=>openForm(null));
     document.getElementById('cancel-btn').addEventListener('click',closeForm);
+    // Genera el "Detalle de atención" de este turno (se abre ya armado en el menú Administración)
+    document.getElementById('detalle-btn').addEventListener('click',()=>{
+      const id=document.getElementById('turno-id').value;
+      if(id) location.href='detalles.html?turno='+encodeURIComponent(id);
+    });
     document.getElementById('delete-btn').addEventListener('click',async()=>{
       const id=document.getElementById('turno-id').value;
       if(!id||!confirm('¿Eliminar este turno?'))return;

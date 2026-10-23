@@ -31,6 +31,13 @@
     .totales .caja.total { background:var(--color-primary-light); border-color:var(--color-primary); }
     .acciones { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:1rem; }
     .origen-fila { display:grid; grid-template-columns:1fr auto; gap:0.5rem; align-items:end; }
+    .adj-controles { display:grid; grid-template-columns:minmax(160px, 1fr) 2fr; gap:0.5rem; align-items:center; margin-bottom:0.5rem; }
+    .adj-lista { display:flex; gap:0.7rem; flex-wrap:wrap; margin-top:0.5rem; }
+    .adj-item { width:112px; text-align:center; font-size:0.72rem; position:relative; margin:0; }
+    .adj-item img, .adj-item .pdf { width:112px; height:112px; object-fit:cover; border-radius:var(--radius-sm); border:1px solid var(--color-border); display:flex; align-items:center; justify-content:center; font-size:2rem; background:var(--color-bg-soft); }
+    .adj-item .quitar { position:absolute; top:3px; right:3px; background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:50%;
+      width:22px; height:22px; padding:0; font-size:0.7rem; line-height:1; box-shadow:none; justify-content:center; }
+    @media (max-width:640px) { .adj-controles { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -120,6 +127,20 @@
 
             <div class="form-group"><label for="d-notas">Notas</label><textarea id="d-notas" rows="2"></textarea></div>
 
+            <!-- Adjuntos: se pueden agregar también después de emitir -->
+            <div id="d-adj-bloque" hidden>
+              <h3 class="seccion-titulo">Adjuntos <span style="font-weight:400;color:var(--color-text-muted);font-size:0.8rem;">(receta, orden médica, foto de la boleta…)</span></h3>
+              <p class="ayuda" id="d-adj-guardar" style="margin-top:0;" hidden>Guarda el borrador para poder adjuntar archivos.</p>
+              <div class="adj-controles" id="d-adj-nuevo">
+                <select id="d-adj-etq" data-siempre aria-label="Qué se adjunta">
+                  <option>Receta</option><option>Orden médica</option><option>Boleta física</option><option value="__otra">Otro…</option>
+                </select>
+                <input type="file" id="d-adj-archivo" accept="image/*,application/pdf" multiple data-siempre aria-label="Agregar archivos" />
+              </div>
+              <div class="adj-lista" id="d-adj-lista"></div>
+              <span class="ayuda" id="d-adj-aviso"></span>
+            </div>
+
             <p class="ayuda" style="margin-top:0;">
               Es un documento <strong>informativo</strong>: no es boleta ni factura, no tiene validez tributaria y no cuenta en los pagos ni en los reportes.
             </p>
@@ -128,11 +149,16 @@
               <button type="button" id="d-borrador">Guardar borrador</button>
               <button type="button" id="d-emitir">Emitir e imprimir</button>
               <button type="button" id="d-copia" class="btn-secondary" hidden>Imprimir copia</button>
+              <button type="button" id="d-wa" class="btn-secondary" hidden>Enviar por WhatsApp</button>
+              <button type="button" id="d-mail" class="btn-secondary" hidden>Enviar por correo</button>
               <button type="button" id="d-duplicar" class="btn-secondary" hidden>Duplicar como borrador nuevo</button>
               <button type="button" id="d-anular" class="btn-danger" hidden>Anular</button>
               <button type="button" id="d-eliminar" class="btn-danger" hidden>Eliminar borrador</button>
               <button type="button" id="d-cerrar" class="btn-secondary">Cerrar</button>
             </div>
+            <span class="ayuda" id="d-enviar-ayuda" hidden>
+              El mensaje lleva el resumen del detalle. Si quieres enviar el documento: <strong>Imprimir copia → Guardar como PDF</strong> y adjúntalo en la conversación.
+            </span>
             <p class="error-message" id="d-error"></p>
           </form>
         </div>
@@ -206,7 +232,7 @@
     // ─── Datos ───
     async function cargarBase() {
       const [p, pe, s, z, t, ex, d] = await Promise.all([
-        supabaseClient.from('pacientes').select('id,nombre,apellido,dni,telefono,direccion').eq('activo', true).order('apellido'),
+        supabaseClient.from('pacientes').select('id,nombre,apellido,dni,telefono,direccion,email').eq('activo', true).order('apellido'),
         supabaseClient.from('personal').select('id,nombre,apellido'),
         supabaseClient.from('servicios').select('id,nombre,precio').eq('activo', true).order('nombre'),
         supabaseClient.from('zonas_traslado').select('id,nombre,km'),
@@ -417,9 +443,10 @@
       return nuevaLinea({ fecha: ymd(new Date(t.fecha_hora)), descripcion: s ? s.nombre : 'Atención', profesional: profesionalDe(t.personal_id),
         lugar: 'Clínica', valor_unitario: s ? Number(s.precio) || 0 : 0 });
     }
-    g('d-agregar-origen').addEventListener('click', () => {
-      if (soloLectura) return;
-      const v = g('d-origen').value;
+    g('d-agregar-origen').addEventListener('click', () => { if (!soloLectura) agregarOrigen(g('d-origen').value); });
+
+    // Agrega al detalle las líneas de una atención ("v:<id>" = visita domiciliaria, "t:<id>" = turno de la agenda)
+    function agregarOrigen(v) {
       if (!v) return;
       const [tipo, id] = v.split(':');
       if (tipo === 'v') {
@@ -444,13 +471,14 @@
       }
       g('d-origen').value = '';
       renderLineas();
-    });
+    }
     g('d-paciente').addEventListener('change', () => { cargarAtenciones(g('d-paciente').value); });
 
     // ─── Formulario ───
     function aplicarSoloLectura(si) {
       soloLectura = si;
-      g('d-form').querySelectorAll('input, select, textarea').forEach(el => { el.disabled = si; });
+      // Los adjuntos (data-siempre) se pueden agregar aunque el detalle ya esté emitido
+      g('d-form').querySelectorAll('input:not([data-siempre]), select:not([data-siempre]), textarea').forEach(el => { el.disabled = si; });
       g('d-agregar-linea').hidden = si;
       g('d-catalogo').hidden = si;
       g('d-origen-bloque').hidden = si || !g('d-paciente').value;
@@ -515,7 +543,7 @@
       const editable = estado === 'borrador';
       aplicarSoloLectura(!editable);
       renderLineas();
-      cargarAtenciones(editable ? g('d-paciente').value : '');
+      const carga = cargarAtenciones(editable ? g('d-paciente').value : '');
 
       g('d-borrador').hidden = !editable;
       g('d-emitir').hidden = !editable;
@@ -523,14 +551,19 @@
       g('d-copia').hidden = editable;
       g('d-duplicar').hidden = editable;
       g('d-anular').hidden = estado !== 'emitido';
+      g('d-wa').hidden = estado !== 'emitido';
+      g('d-mail').hidden = estado !== 'emitido';
+      g('d-enviar-ayuda').hidden = estado !== 'emitido';
+      cargarAdjuntos();
       if (estado === 'emitido') {
         g('estado-banner').innerHTML = `<div class="aviso-caja verde">Emitido el ${esc(diaHoraCL(d.emitido_en || d.actualizado_en))}. Ya no se puede modificar: puedes imprimir una copia, duplicarlo o anularlo.</div>`;
       } else if (estado === 'anulado') {
         g('estado-banner').innerHTML = `<div class="aviso-caja rojo">Anulado${d.anulado_en ? ' el ' + esc(diaHoraCL(d.anulado_en)) : ''}. Motivo: ${esc(d.motivo_anulacion || '—')}. Queda registrado y no se puede modificar.</div>`;
       }
       g('form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return carga;                                           // para esperar a que carguen las atenciones del paciente
     }
-    function abrirNuevo(opciones) { mostrarFormulario(null, opciones); }
+    function abrirNuevo(opciones) { return mostrarFormulario(null, opciones); }
     function abrirDetalle(d) { if (d) mostrarFormulario(d); }
     function cerrarFormulario() { g('form-card').hidden = true; }
 
@@ -568,7 +601,8 @@
         g('form-titulo').textContent = `Detalle de atención ${fmtNumero('DA', fila.numero)} (borrador)`;
         g('d-eliminar').hidden = false;
         g('d-error').textContent = '';
-        g('estado-banner').innerHTML = '<div class="aviso-caja verde">Borrador guardado. Puedes seguir editándolo o emitirlo.</div>';
+        g('estado-banner').innerHTML = '<div class="aviso-caja verde">Borrador guardado. Puedes seguir editándolo, adjuntar archivos o emitirlo.</div>';
+        cargarAdjuntos();
       } finally { btn.disabled = false; }
     });
 
@@ -612,11 +646,204 @@
     g('d-eliminar').addEventListener('click', async () => {
       const id = g('d-id').value;
       if (!id || !confirm('¿Eliminar este borrador? Solo los borradores se pueden eliminar.')) return;
+      // Sus archivos adjuntos también se eliminan (los de un detalle emitido nunca se borran)
+      try {
+        const { data: adj } = await supabaseClient.from('detalle_adjuntos').select('path').eq('detalle_id', id);
+        if (adj && adj.length) await supabaseClient.storage.from('cuidados').remove(adj.map(a => a.path));
+      } catch (e) { /* si no había adjuntos o la tabla aún no existe, sigue */ }
       const { error } = await supabaseClient.from('detalles_atencion').delete().eq('id', id);
       if (error) { g('d-error').textContent = 'No se pudo eliminar: ' + error.message; return; }
       await recargarDetalles();
       cerrarFormulario();
     });
+
+    // ─── Adjuntos (receta, orden médica, foto de la boleta…) en el bucket privado "cuidados" ───
+    let adjuntos = [];
+    let adjuntosDisponibles = true;                           // false si aún no se aplicó v17
+
+    function reducirFoto(file, maximo) {
+      maximo = maximo || 1600;
+      return new Promise((resolve) => {
+        const lector = new FileReader();
+        lector.onerror = () => resolve(file);
+        lector.onload = () => {
+          const img = new Image();
+          img.onerror = () => resolve(file);
+          img.onload = () => {
+            const escala = Math.min(1, maximo / Math.max(img.width, img.height));
+            const c = document.createElement('canvas');
+            c.width = Math.max(1, Math.round(img.width * escala));
+            c.height = Math.max(1, Math.round(img.height * escala));
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            c.toBlob((b) => resolve(b || file), 'image/jpeg', 0.82);
+          };
+          img.src = lector.result;
+        };
+        lector.readAsDataURL(file);
+      });
+    }
+
+    async function cargarAdjuntos() {
+      const id = g('d-id').value;
+      adjuntos = [];
+      g('d-adj-bloque').hidden = false;
+      g('d-adj-aviso').textContent = '';
+      g('d-adj-guardar').hidden = !!id;
+      g('d-adj-nuevo').hidden = !id;
+      if (!id) { g('d-adj-lista').innerHTML = ''; return; }
+      const { data, error } = await supabaseClient.from('detalle_adjuntos').select('*').eq('detalle_id', id).order('creado_en');
+      if (error) {
+        adjuntosDisponibles = false;
+        g('d-adj-nuevo').hidden = true;
+        g('d-adj-aviso').textContent = 'Los adjuntos aún no están activados (falta la actualización v17 en la base de datos).';
+        return;
+      }
+      adjuntosDisponibles = true;
+      adjuntos = data || [];
+      await renderAdjuntos();
+    }
+    async function renderAdjuntos() {
+      const cont = g('d-adj-lista');
+      if (!adjuntos.length) { cont.innerHTML = ''; return; }
+      let urls = {};
+      try {
+        const { data } = await supabaseClient.storage.from('cuidados').createSignedUrls(adjuntos.map(a => a.path), 3600);
+        (data || []).forEach(x => { if (x && x.signedUrl) urls[x.path] = x.signedUrl; });
+      } catch (e) { /* sin vista previa */ }
+      cont.innerHTML = adjuntos.map(a => {
+        const url = urls[a.path];
+        const esPdf = a.tipo === 'application/pdf';
+        const cuerpo = esPdf ? '<div class="pdf">📄</div>' : (url ? `<img src="${esc(url)}" alt="${esc(a.etiqueta)}" />` : '<div class="pdf">🖼</div>');
+        return `<figure class="adj-item">${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${cuerpo}</a>` : cuerpo}
+          <figcaption>${esc(a.etiqueta)}</figcaption>
+          <button type="button" class="quitar" data-quitar-adj="${a.id}" title="Quitar este adjunto">✕</button></figure>`;
+      }).join('');
+    }
+    async function subirAdjuntos(archivos) {
+      const id = g('d-id').value;
+      const aviso = g('d-adj-aviso');
+      if (!id || !adjuntosDisponibles) return;
+      const org = await orgEfectiva();
+      if (!org) { aviso.textContent = 'No se pudo determinar la clínica activa.'; return; }
+      let etiqueta = g('d-adj-etq').value;
+      if (etiqueta === '__otra') etiqueta = (prompt('¿Qué es el archivo? (ej. Informe del médico)') || '').trim() || 'Adjunto';
+      let subidos = 0;
+      for (const f of archivos) {
+        const esPdf = f.type === 'application/pdf', esImg = /^image\//.test(f.type || '');
+        if (!esPdf && !esImg) { aviso.textContent = 'Solo se pueden adjuntar imágenes o PDF.'; continue; }
+        aviso.textContent = 'Subiendo…';
+        const contenido = esImg ? await reducirFoto(f) : f;
+        const tipo = esPdf ? 'application/pdf' : 'image/jpeg';
+        const path = `${org}/detalles/${id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${esPdf ? 'pdf' : 'jpg'}`;
+        const up = await supabaseClient.storage.from('cuidados').upload(path, contenido, { contentType: tipo, upsert: false });
+        if (up.error) { aviso.textContent = 'No se pudo subir el archivo: ' + up.error.message; continue; }
+        const ins = await supabaseClient.from('detalle_adjuntos').insert({ detalle_id: id, path, etiqueta, tipo, nombre_original: f.name || null }).select('*').single();
+        if (ins.error) {
+          try { await supabaseClient.storage.from('cuidados').remove([path]); } catch (e) { /* queda huérfano */ }
+          aviso.textContent = 'No se pudo registrar el adjunto: ' + ins.error.message;
+          continue;
+        }
+        adjuntos.push(ins.data);
+        subidos++;
+      }
+      if (subidos) aviso.textContent = `✓ ${subidos === 1 ? 'Archivo guardado' : subidos + ' archivos guardados'}.`;
+      await renderAdjuntos();
+    }
+    g('d-adj-archivo').addEventListener('change', () => {
+      const entrada = g('d-adj-archivo');
+      const archivos = [...entrada.files];
+      subirAdjuntos(archivos).finally(() => { entrada.value = ''; });
+    });
+    g('d-adj-lista').addEventListener('click', async (e) => {
+      const q = e.target.closest('[data-quitar-adj]');
+      if (!q) return;
+      const a = adjuntos.find(x => x.id === q.dataset.quitarAdj);
+      if (!a || !confirm(`¿Quitar el adjunto “${a.etiqueta}”?`)) return;
+      const { error } = await supabaseClient.from('detalle_adjuntos').delete().eq('id', a.id);
+      if (error) { g('d-adj-aviso').textContent = 'No se pudo quitar: ' + error.message; return; }
+      try { await supabaseClient.storage.from('cuidados').remove([a.path]); } catch (err) { /* ya no estaba */ }
+      adjuntos = adjuntos.filter(x => x.id !== a.id);
+      await renderAdjuntos();
+    });
+
+    // ─── Enviar al paciente por WhatsApp o correo (mensaje con el resumen del detalle) ───
+    function textoResumen(d) {
+      const pac = pacienteDe(d.paciente_id) || {};
+      const cfg = _configCache || {};
+      const nombre = String(pac.nombre || '').trim().split(/\s+/)[0];
+      const lineasTxt = (d.items || []).map(l => {
+        const sub = (Number(l.cantidad) || 0) * (Number(l.valor_unitario) || 0);
+        return `• ${diaCL(l.fecha)} — ${l.descripcion}${Number(l.cantidad) !== 1 ? ' (x' + l.cantidad + ')' : ''} — ${dinero(sub)}`;
+      });
+      const totalTxt = d.iva_modo === 'sin_iva' ? `Total: ${dinero(d.total)}`
+        : d.iva_modo === 'incluido' ? `Total: ${dinero(d.total)} (IVA incluido)`
+        : `Neto: ${dinero(d.neto)} · IVA (${Number(d.iva_pct) || 19}%): ${dinero(d.iva)} · Total: ${dinero(d.total)}`;
+      return [
+        `Hola${nombre ? ' ' + nombre : ''} 👋`,
+        `Te enviamos el detalle de tu atención en ${cfg.razon_social || 'nuestro centro'}:`,
+        ``,
+        `${fmtNumero('DA', d.numero)} · ${diaCL(d.fecha)}`,
+        ...lineasTxt,
+        ``,
+        totalTxt,
+        d.boleta_numero ? `Boleta N° ${d.boleta_numero}` : null,
+        ``,
+        `Este documento es informativo: no es boleta ni factura.`,
+      ].filter(x => x !== null).join('\n');
+    }
+    g('d-wa').addEventListener('click', () => {
+      const d = detalles.find(x => x.id === g('d-id').value);
+      if (!d) return;
+      const pac = pacienteDe(d.paciente_id) || {};
+      const num = numeroWhatsApp(pac.telefono);                // sin teléfono: WhatsApp deja elegir el contacto
+      window.open(`https://wa.me/${num}?text=${encodeURIComponent(textoResumen(d))}`, '_blank');
+    });
+    g('d-mail').addEventListener('click', () => {
+      const d = detalles.find(x => x.id === g('d-id').value);
+      if (!d) return;
+      const pac = pacienteDe(d.paciente_id) || {};
+      const cfg = _configCache || {};
+      const asunto = `Detalle de atención ${fmtNumero('DA', d.numero)}${cfg.razon_social ? ' — ' + cfg.razon_social : ''}`;
+      const enlace = document.createElement('a');            // abre el programa de correo con el mensaje listo
+      enlace.href = `mailto:${pac.email || ''}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(textoResumen(d))}`;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+    });
+
+    // ─── Abrir un detalle ya armado desde otra pantalla (visita, turno o pago) ───
+    async function abrirDesdeAtencion(tipo, id) {
+      const tabla = tipo === 'v' ? 'visitas_cuidado' : 'turnos';
+      const { data: reg } = await supabaseClient.from(tabla).select('*').eq('id', id).maybeSingle();
+      if (!reg) { alert('No se encontró la atención.'); return; }
+      if (reg.anulada) { alert('Esa visita está anulada: no se puede generar un detalle.'); return; }
+      await abrirNuevo({ pacienteId: reg.paciente_id });
+      const lista = tipo === 'v' ? atenciones.visitas : atenciones.turnos;
+      if (!lista.some(x => x.id === id)) lista.unshift(reg);   // por si es más antigua que las 40 últimas
+      agregarOrigen(`${tipo}:${id}`);
+    }
+    async function abrirDesdePago(id) {
+      const { data: p } = await supabaseClient.from('pagos').select('*').eq('id', id).maybeSingle();
+      if (!p) { alert('No se encontró el pago.'); return; }
+      await abrirNuevo({ pacienteId: p.paciente_id });
+      let descripcion = 'Atención profesional', profesional = '';
+      if (p.turno_id) {
+        const { data: t } = await supabaseClient.from('turnos').select('*').eq('id', p.turno_id).maybeSingle();
+        if (t) {
+          const s = servicios.find(x => x.id === t.servicio_id);
+          if (s) descripcion = s.nombre;
+          profesional = profesionalDe(t.personal_id);
+          origen.turno_id = t.id;
+        }
+      }
+      const dia = ymd(new Date(p.fecha));
+      g('d-fecha').value = dia;
+      g('d-iva-modo').value = p.con_iva ? 'incluido' : 'sin_iva';        // el monto de un pago es el total pagado
+      lineas.push(nuevaLinea({ fecha: dia, descripcion, profesional, valor_unitario: Number(p.monto) || 0 }));
+      if (p.notas) g('d-notas').value = p.notas;
+      renderLineas();
+      g('estado-banner').innerHTML = `<div class="aviso-caja verde">Armado desde un pago de ${esc(dinero(p.monto))}${p.tipo_documento === 'boleta' ? '. Si ya tienes la boleta física, anota su N° en la sección “Boleta física”' : ''}. Revisa la descripción antes de emitir.</div>`;
+    }
 
     // ─── Impresión (ventana de impresión, igual que las cotizaciones) ───
     async function imprimirDetalle(d, esCopia, ventanaAbierta) {
@@ -741,8 +968,12 @@
         + servicios.map(sv => `<option value="${sv.id}">${esc(sv.nombre)}${sv.precio != null ? ' · ' + dinero(sv.precio) : ''}</option>`).join('');
       cargarLogo();
       renderLista();
-      const pac = new URLSearchParams(location.search).get('paciente');
-      if (pac) abrirNuevo({ pacienteId: pac });
+      // Desde otras pantallas: ?visita=ID, ?turno=ID, ?pago=ID o ?paciente=ID
+      const qs = new URLSearchParams(location.search);
+      if (qs.get('visita')) await abrirDesdeAtencion('v', qs.get('visita'));
+      else if (qs.get('turno')) await abrirDesdeAtencion('t', qs.get('turno'));
+      else if (qs.get('pago')) await abrirDesdePago(qs.get('pago'));
+      else if (qs.get('paciente')) abrirNuevo({ pacienteId: qs.get('paciente') });
     })();
   </script>
 </body>
