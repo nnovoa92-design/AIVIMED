@@ -140,6 +140,27 @@
                 </select>
               </div>
             </div>
+            <!-- Cobro: total a pagar, abono y método de pago; el saldo se calcula solo -->
+            <div class="cobro-bloque" id="cobro-bloque" hidden>
+              <h3>Cobro de la atención</h3>
+              <div class="form-row">
+                <div class="form-group"><label for="total_pagar">Total a pagar ($)</label>
+                  <input type="number" id="total_pagar" min="0" step="1" placeholder="Ej: 30000" /></div>
+                <div class="form-group"><label for="abono">Abono o pago ahora ($)</label>
+                  <input type="number" id="abono" min="0" step="1" placeholder="0" /></div>
+                <div class="form-group"><label for="metodo_pago">Método de pago</label>
+                  <select id="metodo_pago">
+                    <option value="">Elegir…</option>
+                    <option value="efectivo">Efectivo</option><option value="tarjeta_debito">Tarjeta débito</option>
+                    <option value="tarjeta_credito">Tarjeta crédito</option><option value="transferencia">Transferencia</option>
+                    <option value="otro">Otro</option>
+                  </select></div>
+                <div class="form-group"><label>Saldo por pagar</label><div class="saldo-caja" id="saldo-caja">—</div></div>
+              </div>
+              <div id="pagos-turno"></div>
+              <small class="campo-hint" id="cobro-ayuda">Si hay abono, indica con qué método se pagó. Cada abono queda registrado en Pagos y el saldo se actualiza en todas las pantallas.</small>
+            </div>
+
             <div class="form-group"><label>Notas</label><textarea id="notas" rows="2"></textarea></div>
             <button type="submit" id="submit-btn">Guardar turno</button>
             <button type="button" id="cancel-btn" class="btn-secondary">Cancelar</button>
@@ -227,6 +248,11 @@
     let currentView = 'dia';
     let turnosCache = [];
     let bloqueosCache = [];
+    // Cobro por atención (requiere la actualización v18 de la base)
+    let cobroDisponible = false;
+    let pagosPorTurno = {};       // id de turno → monto ya pagado (para el saldo en la grilla)
+    let pagosTurno = [];          // pagos del turno que se está editando
+    let totalEditado = false;     // true si la persona escribió el total (ya no se propone el precio del servicio)
 
     // ── Duración y solapamientos (un turno puede ocupar varias horas) ──
     const durMin = (t) => Math.max(Number(t.duracion_min) || 60, 30);
@@ -288,9 +314,12 @@
         return `<div class="slot-turno cont ${t.estado}" data-id="${t.id}"><span class="slot-paciente">↳ ${pacS}</span> <span class="slot-servicio">continúa hasta las ${horaFin}</span></div>`;
       }
       const onlineTag = online ? '<span style="background:#c5a44e;color:#fff;border-radius:4px;padding:0 4px;font-size:0.62rem;margin-left:3px;">ONLINE</span>' : '';
+      // Saldo de la atención (total a pagar − pagos recibidos)
+      const cob = cobroDisponible ? etiquetaCobro(resumenCobro(t.total_pagar, [{ monto: pagosPorTurno[t.id] || 0 }])) : null;
+      const cobTag = cob ? `<span class="cobro-tag ${cob.clase}">${cob.texto}</span>` : '';
       const rango = durMin(t) > 60 ? `${hora}–${horaFin}` : hora;
       if (compact) return `<div class="month-turno ${t.estado}" data-id="${t.id}" title="${rango} ${pacS} — ${srvS}${online?' (reserva online)':''}">${online?'● ':''}${rango} ${htmlSeguro(pac.split(' ')[0]||'')}</div>`;
-      return `<div class="slot-turno ${t.estado}" data-id="${t.id}"><span class="slot-paciente">${rango} — ${pacS}</span>${onlineTag} <span class="slot-servicio">${srvS}</span></div>`;
+      return `<div class="slot-turno ${t.estado}" data-id="${t.id}"><span class="slot-paciente">${rango} — ${pacS}</span>${onlineTag} <span class="slot-servicio">${srvS}</span> ${cobTag}</div>`;
     }
 
     // Turnos que tocan el bloque [start, end): los que empiezan en él y los que vienen de uno anterior
@@ -475,6 +504,12 @@
       ]);
       turnosCache=data||[];
       bloqueosCache=bq.error ? [] : (bq.data||[]);   // sin v12 aún: simplemente no hay bloqueos
+      // Lo pagado de cada turno (para mostrar el saldo en la grilla)
+      pagosPorTurno={};
+      if(cobroDisponible && turnosCache.length){
+        const {data:pg}=await supabaseClient.from('pagos').select('turno_id,monto').in('turno_id',turnosCache.map(t=>t.id));
+        (pg||[]).forEach(p=>{ pagosPorTurno[p.turno_id]=(pagosPorTurno[p.turno_id]||0)+(Number(p.monto)||0); });
+      }
       render();
     }
 
@@ -517,6 +552,13 @@
         document.getElementById('detalle-btn').style.display='none';
       }
       document.getElementById('form-error').textContent='';
+      // Cobro: total del turno, abono nuevo vacío y los pagos ya registrados
+      document.getElementById('cobro-bloque').hidden=!cobroDisponible;
+      document.getElementById('abono').value=''; document.getElementById('metodo_pago').value='';
+      document.getElementById('total_pagar').value=(turno && turno.total_pagar!=null)?turno.total_pagar:'';
+      totalEditado=!!(turno && turno.total_pagar!=null);
+      pagosTurno=[]; renderPagosTurno(); actualizarSaldoForm();
+      if(turno) cargarPagosTurno(turno.id);
       // Reconocimiento por RUT: ficha del paciente elegido, o casilla de RUT limpia
       ocultarNuevo();
       const pacActual=document.getElementById('paciente_id').value;
@@ -526,6 +568,50 @@
     }
 
     function closeForm(){document.getElementById('form-card').style.display='none';}
+
+    // ─── Cobro: total a pagar, abonos y saldo ───
+    function actualizarSaldoForm(){
+      const total=document.getElementById('total_pagar').value;
+      const abono=Number(document.getElementById('abono').value)||0;
+      const caja=document.getElementById('saldo-caja');
+      const r=resumenCobro(total,pagosTurno.concat(abono>0?[{monto:abono}]:[]));
+      if(r.estado==='sin_cobro'){ caja.textContent='—'; caja.classList.remove('debe'); }
+      else {
+        caja.textContent=r.saldo<0?`A favor ${dineroCLP(-r.saldo)}`:dineroCLP(r.saldo);
+        caja.classList.toggle('debe',r.saldo>0);
+      }
+      const cancelado=document.getElementById('estado').value==='cancelado';
+      document.getElementById('cobro-ayuda').textContent=(cancelado && r.pagado>0)
+        ? 'Este turno está cancelado y tiene pagos registrados: revisa si corresponde devolverlos.'
+        : 'Si hay abono, indica con qué método se pagó. Cada abono queda registrado en Pagos y el saldo se actualiza en todas las pantallas.';
+    }
+    function renderPagosTurno(){
+      const cont=document.getElementById('pagos-turno');
+      if(!pagosTurno.length){ cont.innerHTML=''; return; }
+      const pagado=pagosTurno.reduce((s,p)=>s+(Number(p.monto)||0),0);
+      cont.innerHTML=`<div class="pagos-lista">${pagosTurno.map(p=>`<div class="fila">
+          <span>${new Date(p.fecha).toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'})} · ${htmlSeguro(METODOS_PAGO[p.metodo_pago]||p.metodo_pago||'—')}${p.notas?' · '+htmlSeguro(p.notas):''}</span>
+          <strong>${dineroCLP(p.monto)}</strong></div>`).join('')}
+        <div class="fila"><span>Pagado hasta ahora</span><strong>${dineroCLP(pagado)}</strong></div></div>`;
+    }
+    async function cargarPagosTurno(turnoId){
+      pagosTurno=[];
+      if(turnoId && cobroDisponible){
+        const {data}=await supabaseClient.from('pagos').select('*').eq('turno_id',turnoId).order('fecha',{ascending:true});
+        pagosTurno=data||[];
+      }
+      renderPagosTurno(); actualizarSaldoForm();
+    }
+    document.getElementById('total_pagar').addEventListener('input',()=>{ totalEditado=true; renderPagosTurno(); actualizarSaldoForm(); });
+    document.getElementById('abono').addEventListener('input',actualizarSaldoForm);
+    document.getElementById('estado').addEventListener('change',actualizarSaldoForm);
+    // Turno nuevo: se propone el precio del servicio como total (se puede cambiar)
+    document.getElementById('servicio_id').addEventListener('change',()=>{
+      if(totalEditado || document.getElementById('turno-id').value) return;
+      const sv=serviciosCache.find(s=>s.id===document.getElementById('servicio_id').value);
+      document.getElementById('total_pagar').value=(sv && sv.precio!=null)?Math.round(Number(sv.precio)):'';
+      actualizarSaldoForm();
+    });
 
     // ─── Duración en horas ───
     function setDuracion(mins) {
@@ -802,6 +888,19 @@
         };
         if(!payload.fecha_hora){errEl.textContent='Indica la fecha y la hora.';return;}
 
+        // Cobro: total a pagar y, si hay abono, con qué método se pagó
+        let abono=0, metodo='', resCobro=null;
+        if(cobroDisponible){
+          const tp=document.getElementById('total_pagar').value;
+          payload.total_pagar=tp!==''?Math.max(0,Math.round(Number(tp))):null;
+          abono=Math.max(0,Math.round(Number(document.getElementById('abono').value)||0));
+          metodo=document.getElementById('metodo_pago').value;
+          if(abono>0 && !metodo){errEl.textContent='Elige el método de pago del abono (efectivo, tarjeta, transferencia…).';return;}
+          resCobro=resumenCobro(payload.total_pagar,pagosTurno.concat(abono>0?[{monto:abono}]:[]));
+          if(abono>0 && payload.total_pagar>0 && resCobro.saldo<0 &&
+             !confirm(`El pago supera el total a pagar en ${dineroCLP(-resCobro.saldo)}. ¿Registrarlo igual?`)) return;
+        }
+
         // 3) avisos: día cerrado, fuera de horario, cruce con otro turno o con un bloqueo
         const previo=id?(turnosCache.find(t=>t.id===id)||{}).estado:null;
         if(payload.estado!=='cancelado'){
@@ -817,6 +916,21 @@
           error=r.error; turnoId=r.data&&r.data.id;
         }
         if(error){errEl.textContent=error.message;return;}
+
+        // El abono queda como un pago real (cuenta en Pagos, Torre de Control e inicio) ligado a este turno
+        if(abono>0 && turnoId){
+          const {error:ePago}=await supabaseClient.from('pagos').insert({
+            paciente_id:pacienteId, turno_id:turnoId, monto:abono, metodo_pago:metodo,
+            fecha:new Date().toISOString(), tipo_documento:'ninguno', con_iva:false,
+            notas:resCobro && resCobro.saldo<=0 ? 'Pago de la atención' : (id?'Abono':'Abono al agendar'),
+          });
+          if(ePago){
+            document.getElementById('turno-id').value=turnoId;     // un nuevo intento no duplica el turno
+            errEl.textContent='El turno se guardó, pero no se pudo registrar el abono: '+ePago.message;
+            await loadTurnos();
+            return;
+          }
+        }
         closeForm(); await loadTurnos();
 
         // 4) al confirmar: mensaje listo para el paciente (indica las horas reservadas)
@@ -831,6 +945,7 @@
     (async()=>{
       const s=await initLayout('agenda'); if(!s) return;
       horariosDesdeConfig(await getConfig()); // horarios desde Configuración
+      cobroDisponible=await columnaExiste('turnos','total_pagar');   // false hasta aplicar v18: la agenda sigue igual
 
       // Enlace de reserva online (para publicar en redes)
       const SITE_BASE = (location.protocol==='http:'||location.protocol==='https:') ? location.origin : 'https://aivimed.nnovoa92.workers.dev';
@@ -844,7 +959,7 @@
 
       const [{data:pacientes},{data:servicios},{data:personal}]=await Promise.all([
         supabaseClient.from('pacientes').select('id,nombre,apellido,dni,telefono,email').eq('activo',true).order('apellido'),
-        supabaseClient.from('servicios').select('id,nombre,duracion_min').eq('activo',true).order('nombre'),
+        supabaseClient.from('servicios').select('id,nombre,duracion_min,precio').eq('activo',true).order('nombre'),
         supabaseClient.from('personal').select('id,nombre,apellido').eq('activo',true).order('apellido'),
       ]);
       pacientesCache=pacientes||[];

@@ -96,6 +96,8 @@ Uso **operacional interno** (dueñas/equipo). Aparte tiene páginas públicas pa
 
 20. `v17_detalle_adjuntos.sql` — `detalle_adjuntos` (receta, orden médica, foto de la boleta…; archivos en el bucket privado `cuidados`, carpeta `<org>/detalles/<detalle>/`).
 
+21. `v18_cobro_por_atencion.sql` — `turnos.total_pagar`, `pagos.visita_id` (abonos de visitas domiciliarias), `detalles_atencion.pago_info` (foto del estado de pago); índices `idx_pagos_turno/visita`. Saldo de una atención = total a pagar − suma de sus `pagos`.
+
 ### Detalle de atención (2026-10)
 - Fase 2: se genera desde Agenda (turno), Visita domiciliaria y Pagos (`detalles.html?turno|visita|pago=ID`); se envía por WhatsApp o correo (resumen en texto, sin adjuntar el PDF); admite adjuntos incluso después de emitir.
 - Pantalla `pages/detalles.html` (menú Administración). NO es boleta ni factura, no tiene validez tributaria y NO cuenta en pagos ni reportes (tabla propia).

@@ -105,6 +105,13 @@
               <div class="caja total"><div class="lbl">Total</div><div class="val" id="t-total">$0</div></div>
             </div>
 
+            <!-- Estado de pago de la atención de origen: queda congelado en el documento al emitirlo -->
+            <div id="d-pago-bloque" hidden>
+              <h3 class="seccion-titulo">Estado de pago de la atención</h3>
+              <div id="d-pago-info"></div>
+              <div class="acciones" style="margin-top:0.4rem;"><button type="button" id="d-pago-actualizar" class="btn-secondary btn-sm">Actualizar estado de pago</button></div>
+            </div>
+
             <h3 class="seccion-titulo">Indicación médica <span style="font-weight:400;color:var(--color-text-muted);font-size:0.8rem;">(opcional)</span></h3>
             <div class="form-row">
               <div class="form-group"><label for="d-medico">Médico o centro que indica</label><input id="d-medico" /></div>
@@ -207,6 +214,8 @@
     let lineas = [];                                               // líneas del detalle en edición
     let origen = { visita_id: null, turno_id: null };
     let soloLectura = false;
+    let pagoInfo = null;                  // foto del estado de pago de la atención de origen (total, pagado, saldo, pagos)
+    let pagoInfoDisponible = false;       // false si aún no se aplicó v18
     let logoImagen = null;
     const g = (id) => document.getElementById(id);
     const esc = htmlSeguro;
@@ -445,6 +454,52 @@
     }
     g('d-agregar-origen').addEventListener('click', () => { if (!soloLectura) agregarOrigen(g('d-origen').value); });
 
+    // ─── Estado de pago de la atención de origen (total, abonos y saldo) ───
+    async function calcularPagoInfo() {
+      let total = null, pagos = [];
+      if (origen.visita_id) {
+        const [v, p] = await Promise.all([
+          supabaseClient.from('visitas_cuidado').select('valor_procedimientos,valor_traslado').eq('id', origen.visita_id).maybeSingle(),
+          supabaseClient.from('pagos').select('fecha,monto,metodo_pago').eq('visita_id', origen.visita_id).order('fecha', { ascending: true }),
+        ]);
+        if (!v.data) return null;
+        total = (Number(v.data.valor_procedimientos) || 0) + (Number(v.data.valor_traslado) || 0);
+        pagos = p.data || [];
+      } else if (origen.turno_id) {
+        const [t, p] = await Promise.all([
+          supabaseClient.from('turnos').select('total_pagar,servicio_id').eq('id', origen.turno_id).maybeSingle(),
+          supabaseClient.from('pagos').select('fecha,monto,metodo_pago').eq('turno_id', origen.turno_id).order('fecha', { ascending: true }),
+        ]);
+        if (!t.data) return null;
+        const s = servicios.find(y => y.id === t.data.servicio_id);
+        total = t.data.total_pagar != null ? Number(t.data.total_pagar) : (s && s.precio != null ? Number(s.precio) : null);
+        pagos = p.data || [];
+      } else return null;
+      const r = resumenCobro(total, pagos);
+      return { total: r.total > 0 ? r.total : null, pagado: r.pagado, saldo: r.saldo, estado: r.estado,
+        pagos: pagos.map(x => ({ fecha: x.fecha, monto: Number(x.monto) || 0, metodo_pago: x.metodo_pago })), al: new Date().toISOString() };
+    }
+    function renderPagoInfo() {
+      const i = pagoInfo;
+      g('d-pago-bloque').hidden = !i;
+      if (!i) { g('d-pago-info').innerHTML = ''; return; }
+      g('d-pago-actualizar').hidden = soloLectura;
+      g('d-pago-info').innerHTML = `<div class="totales">
+          <div class="caja"><div class="lbl">Total a pagar</div><div class="val">${i.total != null ? dinero(i.total) : '—'}</div></div>
+          <div class="caja"><div class="lbl">Pagado</div><div class="val">${dinero(i.pagado)}</div></div>
+          <div class="caja total"><div class="lbl">${i.saldo < 0 ? 'A favor' : 'Saldo por pagar'}</div><div class="val">${i.total != null ? dinero(Math.abs(i.saldo)) : '—'}</div></div></div>
+        <span class="ayuda">${i.pagos.length ? i.pagos.map(p => `${esc(diaCL(p.fecha))} · ${esc(METODOS_PAGO[p.metodo_pago] || p.metodo_pago || '—')} · ${dinero(p.monto)}`).join('<br>') : 'Aún no hay pagos registrados.'}
+        <br>Estado al ${esc(diaHoraCL(i.al))}.</span>`;
+    }
+    async function actualizarPagoInfo() {
+      pagoInfo = null;
+      if (pagoInfoDisponible && (origen.visita_id || origen.turno_id)) {
+        try { pagoInfo = await calcularPagoInfo(); } catch (e) { pagoInfo = null; }
+      }
+      renderPagoInfo();
+    }
+    g('d-pago-actualizar').addEventListener('click', () => { if (!soloLectura) actualizarPagoInfo(); });
+
     // Agrega al detalle las líneas de una atención ("v:<id>" = visita domiciliaria, "t:<id>" = turno de la agenda)
     function agregarOrigen(v) {
       if (!v) return;
@@ -471,6 +526,7 @@
       }
       g('d-origen').value = '';
       renderLineas();
+      return actualizarPagoInfo();
     }
     g('d-paciente').addEventListener('change', () => { cargarAtenciones(g('d-paciente').value); });
 
@@ -492,7 +548,7 @@
       const modo = g('d-iva-modo').value, pct = ivaPct();
       const t = totalesDe(items, modo, pct);
       const prev = g('d-prevision').value || null;
-      return {
+      return conPagoInfo({
         paciente_id: g('d-paciente').value, fecha: g('d-fecha').value || ymd(new Date()),
         visita_id: origen.visita_id, turno_id: origen.turno_id,
         items, iva_modo: modo, iva_pct: pct, neto: t.neto, iva: t.iva, total: t.total,
@@ -502,8 +558,10 @@
         boleta_numero: val('d-boleta-n'), boleta_fecha: g('d-boleta-fecha').value || null,
         boleta_monto: g('d-boleta-monto').value !== '' ? Math.round(Number(g('d-boleta-monto').value)) : null,
         notas: val('d-notas'), actualizado_en: new Date().toISOString(),
-      };
+      });
     }
+    // pago_info solo viaja si ya existe la columna (v18)
+    const conPagoInfo = (datos) => (pagoInfoDisponible ? Object.assign(datos, { pago_info: pagoInfo }) : datos);
     // Validaciones comunes; devuelve texto de error o null
     function validar(datos) {
       if (!datos.paciente_id) return 'Elige el paciente.';
@@ -538,11 +596,13 @@
       g('d-notas').value = base.notas || '';
       lineas = (base.items || []).map(l => Object.assign({}, l));
       origen = { visita_id: opciones.duplicado ? null : (base.visita_id || null), turno_id: opciones.duplicado ? null : (base.turno_id || null) };
+      pagoInfo = opciones.duplicado ? null : (base.pago_info || null);      // un detalle ya guardado conserva su foto del pago
 
       const estado = nuevo || opciones.duplicado ? 'borrador' : d.estado;
       const editable = estado === 'borrador';
       aplicarSoloLectura(!editable);
       renderLineas();
+      renderPagoInfo();
       const carga = cargarAtenciones(editable ? g('d-paciente').value : '');
 
       g('d-borrador').hidden = !editable;
@@ -786,6 +846,7 @@
         ...lineasTxt,
         ``,
         totalTxt,
+        d.pago_info ? `Pagado: ${dinero(d.pago_info.pagado)}${d.pago_info.total != null ? ' · ' + (d.pago_info.saldo > 0 ? 'Saldo por pagar: ' + dinero(d.pago_info.saldo) : 'Pagado en su totalidad ✓') : ''}` : null,
         d.boleta_numero ? `Boleta N° ${d.boleta_numero}` : null,
         ``,
         `Este documento es informativo: no es boleta ni factura.`,
@@ -836,12 +897,14 @@
           origen.turno_id = t.id;
         }
       }
+      if (p.visita_id && !origen.turno_id) origen.visita_id = p.visita_id;
       const dia = ymd(new Date(p.fecha));
       g('d-fecha').value = dia;
       g('d-iva-modo').value = p.con_iva ? 'incluido' : 'sin_iva';        // el monto de un pago es el total pagado
       lineas.push(nuevaLinea({ fecha: dia, descripcion, profesional, valor_unitario: Number(p.monto) || 0 }));
       if (p.notas) g('d-notas').value = p.notas;
       renderLineas();
+      await actualizarPagoInfo();
       g('estado-banner').innerHTML = `<div class="aviso-caja verde">Armado desde un pago de ${esc(dinero(p.monto))}${p.tipo_documento === 'boleta' ? '. Si ya tienes la boleta física, anota su N° en la sección “Boleta física”' : ''}. Revisa la descripción antes de emitir.</div>`;
     }
 
@@ -880,6 +943,13 @@
       const medica = d.medico_indica || d.indicacion
         ? `<div class="panel"><h2>Indicación médica</h2><div class="grid">${dato('Médico o centro', d.medico_indica)}</div>
             ${d.indicacion ? `<div style="margin-top:6px;font-size:13px;">${esc(d.indicacion)}</div>` : ''}</div>` : '';
+      const pi = d.pago_info;
+      const estadoPago = pi ? `<div class="panel"><h2>Estado de pago de la atención</h2><div class="grid">
+            ${dato('Total a pagar', pi.total != null ? dinero(pi.total) : '')}${dato('Pagado', dinero(pi.pagado))}
+            ${dato(pi.saldo < 0 ? 'Saldo a favor' : 'Saldo por pagar', pi.total != null ? dinero(Math.abs(pi.saldo)) : '')}
+          </div>
+          ${(pi.pagos || []).length ? `<div style="margin-top:6px;font-size:13px;">${pi.pagos.map(p => `${esc(diaCL(p.fecha))} · ${esc(METODOS_PAGO[p.metodo_pago] || p.metodo_pago || '—')} · ${dinero(p.monto)}`).join('<br>')}</div>` : ''}
+          <div style="margin-top:6px;font-size:11px;color:#777;">Estado al ${esc(diaCL(String(pi.al).slice(0, 10)))}.</div></div>` : '';
       const pagador = d.pagador_nombre ? `<div class="panel"><h2>Pagado por</h2><div class="grid">${dato('Nombre', d.pagador_nombre)}${dato('RUT', d.pagador_rut)}</div></div>` : '';
       const logoTag = logoImagen ? `<img src="${logoImagen}" alt="" style="width:78px;height:auto;border-radius:8px;" />` : '';
 
@@ -940,6 +1010,7 @@
     <tbody>${items.map(fila).join('') || '<tr><td colspan="7">Sin líneas</td></tr>'}</tbody>
   </table>
   ${totales}
+  ${estadoPago}
   ${boleta}
   ${d.notas ? `<div class="notas"><strong>Notas:</strong> ${esc(d.notas)}</div>` : ''}
 
@@ -960,6 +1031,7 @@
       const s = await initLayout('detalles');
       if (!s) return;
       await getConfig();                                   // trae el IVA y los datos del centro
+      pagoInfoDisponible = await columnaExiste('detalles_atencion', 'pago_info');
       const ok = await cargarBase();
       if (!ok) { g('aviso-v16').hidden = false; g('listado').hidden = true; g('btn-nuevo').hidden = true; return; }
       g('d-paciente').innerHTML = '<option value="">Seleccionar…</option>'

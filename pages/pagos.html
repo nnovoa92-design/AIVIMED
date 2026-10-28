@@ -60,6 +60,11 @@
                 <label>Vincular a cotización (opcional)</label>
                 <select id="cotizacion_id"><option value="">— Ninguna —</option></select>
               </div>
+              <div class="form-group" id="atencion-grupo" hidden>
+                <label>Abona a una atención (opcional)</label>
+                <select id="atencion_id"><option value="">— Ninguna —</option></select>
+                <small class="campo-hint" id="atencion-info">Elige al paciente para ver sus atenciones con saldo.</small>
+              </div>
             </div>
             <p style="font-size:0.78rem;color:var(--color-text-muted);margin:0 0 0.75rem;">
               Tip: boleta/factura o pago con tarjeta normalmente llevan IVA. Promocionales por transferencia, sin documento. Vincular a una cotización aceptada evita volver a cargar el mismo ingreso.
@@ -81,9 +86,9 @@
           <div id="total-banner" style="margin-bottom:0.75rem;font-weight:700;font-size:1.05rem;color:var(--color-primary-dark);"></div>
           <table>
             <thead>
-              <tr><th>Fecha</th><th>Paciente</th><th>Monto</th><th>Método</th><th>Documento</th><th>IVA</th><th>Notas</th><th>Acciones</th></tr>
+              <tr><th>Fecha</th><th>Paciente</th><th>Monto</th><th>Método</th><th>Atención</th><th>Documento</th><th>IVA</th><th>Notas</th><th>Acciones</th></tr>
             </thead>
-            <tbody id="pagos-body"><tr><td colspan="6">Cargando...</td></tr></tbody>
+            <tbody id="pagos-body"><tr><td colspan="9">Cargando...</td></tr></tbody>
           </table>
         </div>
 
@@ -100,6 +105,69 @@
     const DOCS = { ninguno:'Sin doc.', boleta:'Boleta', factura:'Factura' };
     let pagosCache = [];
     let cotsAprobadas = [];
+
+    // ── Cobro por atención: a qué atención pertenece cada pago y cuánto falta (requiere v18) ──
+    let cobroDisponible = false;
+    let atencionInfo = {};          // 't:ID' | 'v:ID' → { etiqueta, total, pagado }
+    let atencionesPaciente = [];    // opciones del selector para el paciente elegido
+    const fechaCorta = (iso) => new Date(iso).toLocaleDateString('es-CL', { day:'2-digit', month:'2-digit' });
+    const sumarPagos = (filas, campo) => { const m = {}; (filas || []).forEach(p => { m[p[campo]] = (m[p[campo]] || 0) + (Number(p.monto) || 0); }); return m; };
+
+    function celdaAtencion(p) {
+      const clave = p.turno_id ? 't:' + p.turno_id : (p.visita_id ? 'v:' + p.visita_id : null);
+      const info = clave && atencionInfo[clave];
+      if (!info) return '<span style="color:var(--color-text-muted);">—</span>';
+      const cob = etiquetaCobro(resumenCobro(info.total, [{ monto: info.pagado }]));
+      return `${htmlSeguro(info.etiqueta)}${cob ? `<br><span class="cobro-tag ${cob.clase}" style="margin-left:0;">${cob.texto}</span>` : ''}`;
+    }
+
+    // Datos de las atenciones de los pagos listados (el saldo usa TODOS los pagos de cada atención, no solo los listados)
+    async function cargarInfoAtenciones(lista) {
+      atencionInfo = {};
+      if (!cobroDisponible) return;
+      const idsT = [...new Set(lista.filter(p => p.turno_id).map(p => p.turno_id))];
+      const idsV = [...new Set(lista.filter(p => p.visita_id).map(p => p.visita_id))];
+      const [t, v, pt, pv] = await Promise.all([
+        idsT.length ? supabaseClient.from('turnos').select('id,fecha_hora,total_pagar,servicios(nombre)').in('id', idsT) : { data: [] },
+        idsV.length ? supabaseClient.from('visitas_cuidado').select('id,fecha_hora,valor_procedimientos,valor_traslado').in('id', idsV) : { data: [] },
+        idsT.length ? supabaseClient.from('pagos').select('turno_id,monto').in('turno_id', idsT) : { data: [] },
+        idsV.length ? supabaseClient.from('pagos').select('visita_id,monto').in('visita_id', idsV) : { data: [] },
+      ]);
+      const porT = sumarPagos(pt.data, 'turno_id'), porV = sumarPagos(pv.data, 'visita_id');
+      (t.data || []).forEach(x => { atencionInfo['t:' + x.id] = { etiqueta: `${(x.servicios && x.servicios.nombre) || 'Atención'} · ${fechaCorta(x.fecha_hora)}`, total: Number(x.total_pagar) || 0, pagado: porT[x.id] || 0 }; });
+      (v.data || []).forEach(x => { atencionInfo['v:' + x.id] = { etiqueta: `Visita domiciliaria · ${fechaCorta(x.fecha_hora)}`, total: (Number(x.valor_procedimientos) || 0) + (Number(x.valor_traslado) || 0), pagado: porV[x.id] || 0 }; });
+    }
+
+    // Atenciones del paciente elegido (agenda y visitas domiciliarias) con su saldo
+    async function cargarAtencionesPaciente(pacId) {
+      atencionesPaciente = [];
+      const sel = document.getElementById('atencion_id');
+      const info = document.getElementById('atencion-info');
+      sel.innerHTML = '<option value="">— Ninguna —</option>';
+      info.textContent = pacId ? '' : 'Elige al paciente para ver sus atenciones con saldo.';
+      if (!pacId || !cobroDisponible) return;
+      const [t, v] = await Promise.all([
+        supabaseClient.from('turnos').select('id,fecha_hora,estado,total_pagar,servicios(nombre)').eq('paciente_id', pacId).order('fecha_hora', { ascending: false }).limit(40),
+        supabaseClient.from('visitas_cuidado').select('id,fecha_hora,estado,valor_procedimientos,valor_traslado').eq('paciente_id', pacId).eq('anulada', false).order('fecha_hora', { ascending: false }).limit(40),
+      ]);
+      const turnos = (t.data || []).filter(x => x.estado !== 'cancelado');
+      const visitas = (v.data || []).filter(x => x.estado !== 'cancelada');
+      const [pt, pv] = await Promise.all([
+        turnos.length ? supabaseClient.from('pagos').select('turno_id,monto').in('turno_id', turnos.map(x => x.id)) : { data: [] },
+        visitas.length ? supabaseClient.from('pagos').select('visita_id,monto').in('visita_id', visitas.map(x => x.id)) : { data: [] },
+      ]);
+      const porT = sumarPagos(pt.data, 'turno_id'), porV = sumarPagos(pv.data, 'visita_id');
+      turnos.forEach(x => atencionesPaciente.push({ clave: 't:' + x.id, f: x.fecha_hora, nombre: (x.servicios && x.servicios.nombre) || 'Atención', total: Number(x.total_pagar) || 0, pagado: porT[x.id] || 0 }));
+      visitas.forEach(x => atencionesPaciente.push({ clave: 'v:' + x.id, f: x.fecha_hora, nombre: 'Visita domiciliaria', total: (Number(x.valor_procedimientos) || 0) + (Number(x.valor_traslado) || 0), pagado: porV[x.id] || 0 }));
+      atencionesPaciente.sort((a, b) => new Date(b.f) - new Date(a.f));
+      atencionesPaciente.forEach(a => {
+        const r = resumenCobro(a.total, [{ monto: a.pagado }]);
+        a.fecha = fechaCorta(a.f);
+        const txt = a.total > 0 ? `Total ${dineroCLP(a.total)} · ${r.saldo > 0 ? 'Saldo ' + dineroCLP(r.saldo) : 'Pagado ✓'}` : 'sin total definido';
+        sel.add(new Option(`${a.fecha} · ${a.nombre} · ${txt}`, a.clave));
+      });
+      info.textContent = atencionesPaciente.length ? '' : 'Este paciente no tiene atenciones registradas.';
+    }
 
     // Dado un pago, devuelve { neto, iva } según con_iva (monto es el total final)
     const desglosar = (p) => {
@@ -118,12 +186,13 @@
       document.getElementById('total-banner').innerHTML = list.length
         ? `Total: ${fmtMoneda(total)} <span style="font-size:0.8rem;color:var(--color-text-muted);font-weight:400;">· IVA incluido: ${fmtMoneda(ivaTotal)} · Neto: ${fmtMoneda(total - ivaTotal)}</span>`
         : '';
-      if (!list.length) { tbody.innerHTML = '<tr><td colspan="8">Sin pagos.</td></tr>'; return; }
+      if (!list.length) { tbody.innerHTML = '<tr><td colspan="9">Sin pagos.</td></tr>'; return; }
       tbody.innerHTML = list.map(p => `<tr>
         <td>${fmtFechaHora(p.fecha)}</td>
         <td>${p.pacientes ? `${p.pacientes.nombre} ${p.pacientes.apellido}` : '–'}</td>
         <td style="font-weight:600;">${fmtMoneda(p.monto)}</td>
         <td>${METODOS[p.metodo_pago] ?? p.metodo_pago ?? '–'}</td>
+        <td>${celdaAtencion(p)}</td>
         <td>${DOCS[p.tipo_documento] ?? '–'}</td>
         <td>${p.con_iva ? '<span class="badge badge-green">Sí</span>' : '<span class="badge badge-gray">No</span>'}</td>
         <td>${p.notas ?? '–'}</td>
@@ -155,6 +224,7 @@
       }
       const { data } = await q;
       pagosCache = data || [];
+      await cargarInfoAtenciones(pagosCache);
       renderPagos(pagosCache);
     };
 
@@ -181,8 +251,28 @@
       document.getElementById('notas').value = `Cotización ${fmtNumero('COT', cot.numero)}`;
     });
 
+    // Al elegir una atención con saldo, el monto propuesto es lo que falta por pagar
+    document.getElementById('paciente_id').addEventListener('change', (e) => { cargarAtencionesPaciente(e.target.value); });
+    document.getElementById('atencion_id').addEventListener('change', (e) => {
+      const a = atencionesPaciente.find(x => x.clave === e.target.value);
+      const info = document.getElementById('atencion-info');
+      if (!a) { info.textContent = ''; return; }
+      const r = resumenCobro(a.total, [{ monto: a.pagado }]);
+      info.textContent = a.total > 0
+        ? `Total ${dineroCLP(r.total)} · Pagado ${dineroCLP(r.pagado)} · Saldo ${dineroCLP(r.saldo)}`
+        : 'Esta atención aún no tiene un total a pagar definido (se puede definir en la agenda).';
+      if (r.saldo > 0) document.getElementById('monto').value = r.saldo;
+      if (!document.getElementById('notas').value) document.getElementById('notas').value = `Pago de atención del ${a.fecha}`;
+    });
+
     document.getElementById('pago-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const claveAtencion = cobroDisponible ? document.getElementById('atencion_id').value : '';
+      const atencion = atencionesPaciente.find(x => x.clave === claveAtencion);
+      if (atencion && atencion.total > 0) {
+        const r = resumenCobro(atencion.total, [{ monto: atencion.pagado }, { monto: Number(document.getElementById('monto').value) || 0 }]);
+        if (r.saldo < 0 && !confirm(`Este pago supera el saldo de la atención en ${dineroCLP(-r.saldo)}. ¿Registrarlo igual?`)) return;
+      }
       const payload = {
         paciente_id: document.getElementById('paciente_id').value || null,
         monto: document.getElementById('monto').value,
@@ -193,8 +283,12 @@
         fecha: document.getElementById('fecha').value || new Date().toISOString(),
         notas: document.getElementById('notas').value || null,
       };
+      if (claveAtencion.startsWith('t:')) payload.turno_id = claveAtencion.slice(2);
+      else if (claveAtencion.startsWith('v:')) payload.visita_id = claveAtencion.slice(2);
       const { error } = await supabaseClient.from('pagos').insert(payload);
       if (error) { document.getElementById('form-error').textContent = error.message; return; }
+      document.getElementById('form-error').textContent = '';
+      if (cobroDisponible) await cargarAtencionesPaciente(document.getElementById('paciente_id').value);   // el saldo ya cambió
       document.getElementById('monto').value = '';
       document.getElementById('notas').value = '';
       document.getElementById('cotizacion_id').value = '';
@@ -207,6 +301,8 @@
       const s = await initLayout('pagos');
       if (!s) return;
       await getConfig(); // ajusta IVA_PCT según configuración
+      cobroDisponible = (await columnaExiste('turnos', 'total_pagar')) && (await columnaExiste('pagos', 'visita_id'));   // false hasta aplicar v18
+      document.getElementById('atencion-grupo').hidden = !cobroDisponible;
 
       const { data: pacientes } = await supabaseClient.from('pacientes').select('id,nombre,apellido').eq('activo',true).order('apellido');
       const selPac = document.getElementById('paciente_id');

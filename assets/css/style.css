@@ -595,3 +595,25 @@ tr:hover td { background: var(--color-bg-soft); }
 .campo-hint { display: block; margin-top: 0.25rem; font-size: 0.76rem; color: var(--color-text-muted); }
 .campanita-accion { margin-top: 0.5rem; }
 .campanita-ok { margin-top: 0.4rem; font-size: 0.78rem; font-weight: 600; color: var(--color-success); }
+
+/* ══════════════════════════════════════════════
+   COBRO POR ATENCIÓN (total, abonos y saldo)
+   ══════════════════════════════════════════════ */
+.cobro-tag {
+  display: inline-block; border-radius: 999px; padding: 0.05rem 0.5rem; margin-left: 3px;
+  font-size: 0.62rem; font-weight: 700; white-space: nowrap; vertical-align: middle;
+}
+.cobro-pagado    { background: #d9f0e4; color: #1e6040; }
+.cobro-abonado   { background: #fdf0d3; color: #7a5010; }
+.cobro-pendiente { background: #fbe0dd; color: #8a1a18; }
+.cobro-exceso    { background: #e0ebfc; color: #25599e; }
+.cobro-bloque {
+  border: 1px solid var(--color-border); border-left: 3px solid var(--color-accent); border-radius: var(--radius-sm);
+  background: var(--color-bg-soft); padding: 0.85rem 1rem 0.4rem; margin: 0.25rem 0 1rem;
+}
+.cobro-bloque h3 { margin: 0 0 0.6rem; font-size: 0.95rem; color: var(--color-primary-dark); }
+.saldo-caja { font-size: 1.15rem; font-weight: 700; color: var(--color-primary-dark); padding-top: 0.3rem; }
+.saldo-caja.debe { color: var(--color-danger); }
+.pagos-lista { font-size: 0.82rem; margin: 0 0 0.6rem; }
+.pagos-lista .fila { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.3rem 0; border-bottom: 1px solid var(--color-border); }
+.pagos-lista .fila:last-child { border-bottom: none; }

@@ -130,6 +130,40 @@ const ESTADOS_COTIZACION = {
   rechazada: { label: 'Rechazada',  badge: 'badge-red' },
 };
 
+// ── Cobro por atención: total a pagar, pagos recibidos (abonos) y saldo ──
+// Un solo cálculo para todas las pantallas: saldo = total a pagar − suma de los pagos de esa atención.
+function dineroCLP(n) {
+  return Number(n || 0).toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 });
+}
+function resumenCobro(total, pagos) {
+  const t = Number(total) || 0;
+  const pagado = (pagos || []).reduce((s, p) => s + (Number(p.monto) || 0), 0);
+  const saldo = t - pagado;
+  let estado;
+  if (t <= 0 && pagado <= 0) estado = 'sin_cobro';
+  else if (saldo < 0) estado = 'excedente';
+  else if (saldo === 0) estado = 'pagado';
+  else estado = pagado > 0 ? 'abonado' : 'pendiente';
+  return { total: t, pagado, saldo, estado };
+}
+// Texto y color de la etiqueta de saldo (null si la atención no tiene cobro definido)
+function etiquetaCobro(r) {
+  switch (r.estado) {
+    case 'pagado':    return { texto: 'Pagado ✓', clase: 'cobro-pagado' };
+    case 'abonado':   return { texto: `Abonado · saldo ${dineroCLP(r.saldo)}`, clase: 'cobro-abonado' };
+    case 'pendiente': return { texto: `Por pagar ${dineroCLP(r.saldo)}`, clase: 'cobro-pendiente' };
+    case 'excedente': return { texto: `Pagado de más ${dineroCLP(-r.saldo)}`, clase: 'cobro-exceso' };
+    default:          return null;
+  }
+}
+// ¿La base ya tiene esta columna? (sirve para no romper pantallas antes de aplicar una actualización)
+async function columnaExiste(tabla, columna) {
+  try {
+    const { error } = await supabaseClient.from(tabla).select(columna).limit(1);
+    return !error;
+  } catch (e) { return false; }
+}
+
 function fmtNumero(prefijo, numero) {
   return `${prefijo}-${String(numero ?? 0).padStart(4, '0')}`;
 }
@@ -143,7 +177,7 @@ function badgeEstado(estado, mapa) {
 // Un solo flujo para la campanita y la agenda. El mensaje NO pide cédula ni RUT e indica cuántas
 // horas quedan reservadas para el paciente. El envío es con un clic (abre WhatsApp con el
 // mensaje escrito); el envío 100 % automático requeriría la API de WhatsApp Business.
-function mensajeConfirmacion({ nombre, servicio, inicio, mins, clinica, direccion }) {
+function mensajeConfirmacion({ nombre, servicio, inicio, mins, clinica, direccion, cobro }) {
   const hm = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const fin = new Date(inicio.getTime() + mins * 60000);
   let dia = inicio.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -160,9 +194,18 @@ function mensajeConfirmacion({ nombre, servicio, inicio, mins, clinica, direccio
     `🕐 ${hm(inicio)} a ${hm(fin)} (${dur})`,
     servicio ? `✨ ${servicio}` : null,
     direccion ? `📍 ${direccion}` : null,
+    textoCobro(cobro),
     ``,
     `Si necesitas cambiar o cancelar tu hora, respóndenos por este mismo medio. ¡Te esperamos!`,
   ].filter(x => x !== null).join('\n');
+}
+
+// Línea de pago del mensaje: total, lo abonado y lo que falta (nada si la atención no tiene total)
+function textoCobro(cobro) {
+  if (!cobro || !(Number(cobro.total) > 0)) return null;
+  if (cobro.saldo <= 0) return `💳 Total: ${dineroCLP(cobro.total)} · Pagado ✓`;
+  if (cobro.pagado > 0) return `💳 Total: ${dineroCLP(cobro.total)} · Abonado: ${dineroCLP(cobro.pagado)} · Saldo por pagar: ${dineroCLP(cobro.saldo)}`;
+  return `💳 Total a pagar: ${dineroCLP(cobro.total)}`;
 }
 
 // Número listo para wa.me (código de país + dígitos)
@@ -222,6 +265,16 @@ async function abrirConfirmacionTurno(turnoId, opciones) {
   const quien = `${pac.nombre || ''} ${pac.apellido || ''}`.trim() || 'el paciente';
   const cuando = inicio.toLocaleString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hour12: false });
 
+  // Total y pagos de esta atención (si la base aún no tiene el cobro por atención, el mensaje sale sin esa línea)
+  let cobro = null;
+  try {
+    const [tp, pg] = await Promise.all([
+      supabaseClient.from('turnos').select('total_pagar').eq('id', turnoId).maybeSingle(),
+      supabaseClient.from('pagos').select('monto').eq('turno_id', turnoId),
+    ]);
+    if (!tp.error && tp.data && Number(tp.data.total_pagar) > 0) cobro = resumenCobro(tp.data.total_pagar, pg.data || []);
+  } catch (e) { /* sin cobro */ }
+
   let modal = document.getElementById('cfm-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -270,7 +323,7 @@ async function abrirConfirmacionTurno(turnoId, opciones) {
   const minutos = () => (g('cfm-horas') ? horas() * 60 : (Number(t.duracion_min) || 60));
   let editado = false;
   const armarTexto = () => mensajeConfirmacion({
-    nombre, servicio, inicio, mins: minutos(), clinica: cfg.razon_social, direccion: cfg.direccion,
+    nombre, servicio, inicio, mins: minutos(), clinica: cfg.razon_social, direccion: cfg.direccion, cobro,
   });
   g('cfm-texto').value = armarTexto();
   g('cfm-texto').addEventListener('input', () => { editado = true; });

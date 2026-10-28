@@ -294,6 +294,25 @@
             </div>
             <button type="button" id="v-recalcular" class="btn-secondary btn-sm" style="margin-bottom:1rem;">Recalcular según tarifas</button>
 
+            <!-- Cobro: el total es el valor de la visita; abonos con su método de pago y el saldo -->
+            <div class="cobro-bloque" id="v-cobro" hidden>
+              <h3>Cobro de la visita</h3>
+              <div class="form-row">
+                <div class="form-group"><label>Total a pagar</label><div class="saldo-caja" id="v-cobro-total">$0</div></div>
+                <div class="form-group"><label for="v-abono">Abono o pago ahora ($)</label><input type="number" id="v-abono" min="0" step="1" placeholder="0" /></div>
+                <div class="form-group"><label for="v-metodo">Método de pago</label>
+                  <select id="v-metodo">
+                    <option value="">Elegir…</option>
+                    <option value="efectivo">Efectivo</option><option value="tarjeta_debito">Tarjeta débito</option>
+                    <option value="tarjeta_credito">Tarjeta crédito</option><option value="transferencia">Transferencia</option>
+                    <option value="otro">Otro</option>
+                  </select></div>
+                <div class="form-group"><label>Saldo por pagar</label><div class="saldo-caja" id="v-saldo">—</div></div>
+              </div>
+              <div id="v-pagos"></div>
+              <small class="campo-hint" id="v-cobro-ayuda"></small>
+            </div>
+
             <div>
               <button type="submit" id="v-guardar">Guardar visita</button>
               <button type="button" id="v-cancelar" class="btn-secondary">Cerrar</button>
@@ -565,6 +584,9 @@
     // ─── Estado ───
     let pacientes = [], personal = [], zonas = [], tarifas = {}, planes = [], visitas = [], tiposPlan = [], extras = [];
     let v15 = true;                     // false si aún no se aplicó la actualización v15
+    let cobroDisponible = false;        // false si aún no se aplicó v18 (abonos y saldo)
+    let pagosVisita = [];               // pagos de la visita que se está editando
+    let pagosPorVisita = {};            // id de visita → monto ya pagado
     let filtroVisitas = 'proximas', filtroPlanes = 'activo';
     let valoresEditados = { proc:false, tras:false };
     let nombreEquipo = 'Equipo de la clínica';
@@ -630,6 +652,12 @@
     async function cargarVisitas() {
       const { data } = await supabaseClient.from('visitas_cuidado').select('*').order('fecha_hora', { ascending: false }).limit(600);
       visitas = data || [];
+      // Pagos ya registrados por visita (para el saldo en la lista)
+      pagosPorVisita = {};
+      if (cobroDisponible) {
+        const { data: pg } = await supabaseClient.from('pagos').select('visita_id,monto').not('visita_id', 'is', null);
+        (pg || []).forEach(p => { pagosPorVisita[p.visita_id] = (pagosPorVisita[p.visita_id] || 0) + (Number(p.monto) || 0); });
+      }
     }
 
     // ─── Resumen ───
@@ -670,6 +698,7 @@
           const total = (Number(v.valor_procedimientos) || 0) + (Number(v.valor_traslado) || 0);
           const plan = planes.find(p => p.id === v.plan_id);
           const zona = zonas.find(z => z.id === v.zona_id);
+          const cob = cobroDisponible && !v.anulada && v.estado !== 'cancelada' ? etiquetaCobro(resumenCobro(total, [{ monto: pagosPorVisita[v.id] || 0 }])) : null;
           return `<tr class="fila-click${v.anulada ? ' anulada' : ''}" data-id="${v.id}">
             <td>${esc(fmtVisitaFecha(v.fecha_hora))}</td>
             <td><strong>${esc(nombrePac(pacienteDe(v.paciente_id)) || '—')}</strong>
@@ -679,7 +708,7 @@
               : '🏥 Clínica'}</td>
             <td>${chips(tipos)}</td>
             <td><span class="badge ${est.badge}">${est.label}</span>${v.anulada ? ' <span class="badge badge-red">Anulada</span>' : ''}</td>
-            <td>${dinero(total)}</td></tr>`;
+            <td>${dinero(total)}${cob ? `<div><span class="cobro-tag ${cob.clase}">${esc(cob.texto)}</span></div>` : ''}</td></tr>`;
         }).join('')}</tbody></table>`;
       g('lista-visitas').querySelectorAll('tr[data-id]').forEach(tr => tr.addEventListener('click', () => abrirVisita(visitas.find(v => v.id === tr.dataset.id))));
     }
@@ -1317,8 +1346,39 @@
       actualizarTotal();
     }
     function actualizarTotal() {
-      g('v-total').textContent = dinero((Number(g('v-val-proc').value) || 0) + (Number(g('v-val-tras').value) || 0));
+      g('v-total').textContent = dinero(totalVisita());
+      actualizarSaldoVisita();
     }
+
+    // ─── Cobro de la visita: total, abonos y saldo ───
+    const totalVisita = () => (Number(g('v-val-proc').value) || 0) + (Number(g('v-val-tras').value) || 0);
+    function actualizarSaldoVisita() {
+      const abono = Number(g('v-abono').value) || 0;
+      const r = resumenCobro(totalVisita(), pagosVisita.concat(abono > 0 ? [{ monto: abono }] : []));
+      g('v-cobro-total').textContent = dinero(r.total);
+      const caja = g('v-saldo');
+      if (r.estado === 'sin_cobro') { caja.textContent = '—'; caja.classList.remove('debe'); }
+      else { caja.textContent = r.saldo < 0 ? `A favor ${dinero(-r.saldo)}` : dinero(r.saldo); caja.classList.toggle('debe', r.saldo > 0); }
+      g('v-cobro-ayuda').textContent = (g('v-estado').value === 'cancelada' && r.pagado > 0)
+        ? 'Esta visita está cancelada y tiene pagos registrados: revisa si corresponde devolverlos.'
+        : 'Si hay abono, indica con qué método se pagó. Cada abono queda registrado en Pagos y el saldo se actualiza en todas las pantallas.';
+    }
+    function renderPagosVisita() {
+      const cont = g('v-pagos');
+      if (!pagosVisita.length) { cont.innerHTML = ''; return; }
+      const pagado = pagosVisita.reduce((s, p) => s + (Number(p.monto) || 0), 0);
+      cont.innerHTML = `<div class="pagos-lista">${pagosVisita.map(p => `<div class="fila">
+          <span>${esc(new Date(p.fecha).toLocaleDateString('es-CL', { day:'2-digit', month:'2-digit', year:'numeric' }))} · ${esc(METODOS_PAGO[p.metodo_pago] || p.metodo_pago || '—')}${p.notas ? ' · ' + esc(p.notas) : ''}</span>
+          <strong>${dinero(p.monto)}</strong></div>`).join('')}
+        <div class="fila"><span>Pagado hasta ahora</span><strong>${dinero(pagado)}</strong></div></div>`;
+    }
+    async function cargarPagosVisita(visitaId) {
+      const { data } = await supabaseClient.from('pagos').select('*').eq('visita_id', visitaId).order('fecha', { ascending: true });
+      pagosVisita = data || [];
+      renderPagosVisita(); actualizarSaldoVisita();
+    }
+    g('v-abono').addEventListener('input', actualizarSaldoVisita);
+    g('v-estado').addEventListener('change', actualizarSaldoVisita);
     function actualizarAyudaZona() {
       const z = zonas.find(x => x.id === g('v-zona').value);
       g('v-zona-ayuda').textContent = z
@@ -1450,7 +1510,12 @@
       }
       actualizarDomVisita(); mostrarCamposProcs(); actualizarResumenProcs('vp');
       actualizarBloquePlan(); actualizarAyudaZona();
+      // Cobro: abono nuevo vacío y los pagos ya registrados de esta visita
+      g('v-cobro').hidden = !cobroDisponible;
+      g('v-abono').value = ''; g('v-metodo').value = '';
+      pagosVisita = []; renderPagosVisita();
       if (!visita) recalcularValores(true); else actualizarTotal();
+      if (visita && cobroDisponible) cargarPagosVisita(visita.id);
       actualizarAvisoIndicacion();
       ORDEN.forEach(t => { pintarFotos(t); });
       g('visita-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1566,6 +1631,17 @@
         }
       }
 
+      // Cobro: el abono necesita su método de pago y no debería superar el saldo
+      const abono = cobroDisponible ? (Number(g('v-abono').value) || 0) : 0;
+      const metodo = g('v-metodo').value;
+      let resCobro = null;
+      if (cobroDisponible) {
+        if (abono < 0) { err.textContent = 'El abono no puede ser negativo.'; return; }
+        if (abono > 0 && !metodo) { err.textContent = 'Indica el método de pago del abono (efectivo, tarjeta, transferencia…).'; return; }
+        resCobro = resumenCobro(totalVisita(), pagosVisita.concat(abono > 0 ? [{ monto: abono }] : []));
+        if (resCobro.estado === 'excedente' && !confirm(`Lo pagado supera el total de la visita en ${dinero(-resCobro.saldo)}. ¿Guardar de todos modos?`)) return;
+      }
+
       const num = (id) => (g(id).value !== '' ? Number(g(id).value) : null);
       const signos = { pa: g('v-pa').value.trim() || null, fc: num('v-fc'), temp: num('v-temp'), sat: num('v-sat') };
       const hayVitales = Object.values(signos).some(v => v !== null);
@@ -1622,6 +1698,22 @@
           ? await supabaseClient.from('visitas_cuidado').update(payload).eq('id', id)
           : await supabaseClient.from('visitas_cuidado').insert(Object.assign({ id: visitaIdActual }, payload));
         if (error) { err.textContent = 'No se pudo guardar: ' + error.message; return; }
+
+        // El abono queda como un pago real (cuenta en Pagos y Torre de Control) ligado a esta visita
+        if (abono > 0) {
+          const visitaId = id || visitaIdActual;
+          const { error: ePago } = await supabaseClient.from('pagos').insert({
+            paciente_id: pacienteId, visita_id: visitaId, monto: abono, metodo_pago: metodo,
+            fecha: new Date().toISOString(), tipo_documento: 'ninguno', con_iva: false,
+            notas: resCobro && resCobro.saldo <= 0 ? 'Pago de la visita' : (id ? 'Abono' : 'Abono al agendar'),
+          });
+          if (ePago) {
+            g('v-id').value = visitaId;     // un nuevo intento actualiza la visita, no la duplica
+            err.textContent = 'La visita se guardó, pero no se pudo registrar el abono: ' + ePago.message;
+            await cargarVisitas(); renderVisitas();
+            return;
+          }
+        }
 
         // Dirección: opcionalmente queda guardada en la ficha del paciente
         if (dom && g('v-guardar-dir').checked && payload.direccion) {
@@ -1681,6 +1773,7 @@
     (async () => {
       const s = await initLayout('domiciliaria');
       if (!s) return;
+      cobroDisponible = await columnaExiste('pagos', 'visita_id');
       const ok = await cargarBase();
       if (!ok) {
         g('aviso-v14').hidden = false;
